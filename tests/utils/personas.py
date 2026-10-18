@@ -85,3 +85,46 @@ def generate_salaried_individual_persona(seed: str) -> List[dict]:
         })
 
     return payloads
+
+
+def generate_destination_fan_in_persona(seed: str) -> List[dict]:
+    seed_int = abs(hash(seed))
+    dest_doc = deterministic_cpf(seed_int + 99999)
+    dest_acct = f"{(seed_int % 800000000 + 200000000):010d}"
+    dest_opening_date = "2026-10-10T08:00:00-03:00"
+
+    base_date = datetime(2026, 10, 17, 14, 0, tzinfo=BRASILIA_TZ)
+    payloads = []
+
+    for i in range(3):
+        payer_doc = deterministic_cpf(seed_int + 1000 + i * 53)
+        payer_acct = f"{(seed_int + 10000 + i * 31) % 800000000 + 100000000:010d}"
+        device_id = f"dvc-fanin-{seed}-{i}"
+        tx_date = base_date + timedelta(minutes=10 * i)
+
+        payloads.append({
+            "id": f"pix-fanin-{seed}-{i}",
+            "amount": 4000 + i * 500,
+            "transaction_date": tx_date.isoformat(),
+            "source_account": {
+                "branch": "0001",
+                "account_number": payer_acct,
+                "opening_date": OLD_OPENING_DATE,
+                "owner": {"document_number": payer_doc},
+            },
+            "destination_account": {
+                "participant": "60701190",
+                "branch": "3675",
+                "account_number": dest_acct,
+                "opening_date": dest_opening_date,
+                "owner": {"document_number": dest_doc},
+            },
+            "source": {
+                "device_id": device_id,
+                "channel": "app",
+                "ip": "198.51.100.23",
+                "geolocation": {"latitude": -23.56, "longitude": -46.65},
+            },
+        })
+
+    return payloads
