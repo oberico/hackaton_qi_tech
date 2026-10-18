@@ -61,3 +61,33 @@ class TestPostSemanticErrors:
         get_status, get_response = RequestGenerator.GET_pix_transaction(payload["id"])
         assert get_status == 404
         assert get_response["code"] == "RNV001039"
+
+    def test_source_account_opening_date_after_transaction_date_returns_422_rnv001040(self):
+        payload = PayloadGenerator.create_challenge_example_payload()
+        payload["source_account"]["opening_date"] = "2026-10-18T00:00:00-03:00"
+        payload["transaction_date"] = "2026-10-17T03:15:00-03:00"
+
+        status, response = RequestGenerator.POST_pix_transaction(payload)
+
+        assert status == 422
+        assert set(response.keys()) == ERROR_FIELDS
+        assert response["code"] == "RNV001040"
+
+        get_status, get_response = RequestGenerator.GET_pix_transaction(payload["id"])
+        assert get_status == 404
+        assert get_response["code"] == "RNV001039"
+
+    def test_destination_account_opening_date_after_transaction_date_returns_422_rnv001040(self):
+        payload = PayloadGenerator.create_challenge_example_payload()
+        payload["destination_account"]["opening_date"] = "2026-10-18T00:00:00-03:00"
+        payload["transaction_date"] = "2026-10-17T03:15:00-03:00"
+
+        status, response = RequestGenerator.POST_pix_transaction(payload)
+
+        assert status == 422
+        assert set(response.keys()) == ERROR_FIELDS
+        assert response["code"] == "RNV001040"
+
+        get_status, get_response = RequestGenerator.GET_pix_transaction(payload["id"])
+        assert get_status == 404
+        assert get_response["code"] == "RNV001039"
