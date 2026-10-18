@@ -8,6 +8,8 @@ from controllers.risk_context_builder import build_risk_context, person_type_of,
 from dtos import PixAnalysisDto
 from errors import PixIdReusedWithDifferentPayload
 from repositories import (
+    AccountCounterpartyRepository,
+    AccountDeviceRepository,
     AccountHolderRepository,
     AccountRepository,
     PixAnalysisAxisRepository,
@@ -18,7 +20,7 @@ from repositories import (
     RiskHistoryRepository,
 )
 from src.engine.engine import evaluate
-from src.engine.risk_context import EngineResult, RiskContext
+from src.engine.risk_context import Decision, EngineResult, RiskContext
 from utils.payload_hash import payload_hash
 
 
@@ -74,6 +76,8 @@ class PixTransactionController(BaseController):
         self.axes = PixAnalysisAxisRepository(self.context)
         self.rules = PixAnalysisRuleRepository(self.context)
         self.history = RiskHistoryRepository(self.context)
+        self.devices = AccountDeviceRepository(self.context)
+        self.counterparties = AccountCounterpartyRepository(self.context)
 
     def create(self, payload: dict) -> Tuple[dict, bool]:
         started_at = time.perf_counter()
@@ -88,9 +92,13 @@ class PixTransactionController(BaseController):
         )
         if pix_transaction is None:
             return self._replay(payload), False
-        context = build_risk_context(payload, source_account, destination_account, destination_participant, self.history)
+        context = build_risk_context(
+            payload, source_account, destination_account, destination_participant, self.history, self.devices, self.counterparties
+        )
         result = evaluate(context)
         pix_analysis = self._record_analysis(pix_transaction.id, result, context, started_at)
+        if result.decision == Decision.APPROVED:
+            self._remember_approval(pix_transaction)
         self.session.commit()
         return self._to_dto(pix_analysis.id), True
 
@@ -116,6 +124,17 @@ class PixTransactionController(BaseController):
         )
         self.rules.create_all(pix_analysis.id, result.evaluated_rules)
         return pix_analysis
+
+    def _remember_approval(self, pix_transaction) -> None:
+        self.devices.record_approval(
+            pix_transaction.source_account_id, pix_transaction.device_id, pix_transaction.transaction_date
+        )
+        self.counterparties.record_approval(
+            pix_transaction.source_account_id,
+            pix_transaction.destination_account_id,
+            pix_transaction.amount_minor,
+            pix_transaction.transaction_date,
+        )
 
     def _to_dto(self, pix_analysis_id: int) -> dict:
         pix_analysis, status, decision_basis = self.analyses.find_by_id(pix_analysis_id)
