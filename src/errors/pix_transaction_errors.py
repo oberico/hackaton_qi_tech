@@ -65,3 +65,14 @@ class TransactionDateInFuture(QIException):
         description = "The transaction date cannot be more than 5 minutes in the future."
         translation = "A data da transação não pode estar mais de 5 minutos no futuro."
         super().__init__(title, self.code, http_status, description, translation)
+
+
+class SourceAndDestinationAccountsAreTheSame(QIException):
+    code = "RNV001042"
+
+    def __init__(self) -> None:
+        title = "Source And Destination Accounts Are The Same"
+        http_status = 422
+        description = "The source and destination accounts cannot be the same."
+        translation = "A conta de origem e a conta de destino não podem ser iguais."
+        super().__init__(title, self.code, http_status, description, translation)

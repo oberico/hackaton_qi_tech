@@ -1,9 +1,11 @@
 from datetime import datetime, timedelta, timezone
 
+from constants import OWN_PARTICIPANT
 from errors import (
     AccountOpenedAfterTransaction,
     InvalidCnpj,
     InvalidCpf,
+    SourceAndDestinationAccountsAreTheSame,
     TransactionDateInFuture,
 )
 from utils.cnpj import is_valid_cnpj
@@ -37,7 +39,16 @@ def validate_transaction_date_not_in_future(payload: dict) -> None:
         raise TransactionDateInFuture()
 
 
+def validate_different_accounts(payload: dict) -> None:
+    dest = payload["destination_account"]
+    if dest["participant"] == OWN_PARTICIPANT:
+        src = payload["source_account"]
+        if src["branch"] == dest["branch"] and src["account_number"] == dest["account_number"]:
+            raise SourceAndDestinationAccountsAreTheSame()
+
+
 def validate_payload_semantics(payload: dict) -> None:
     validate_document_numbers(payload)
     validate_opening_dates(payload)
     validate_transaction_date_not_in_future(payload)
+    validate_different_accounts(payload)
