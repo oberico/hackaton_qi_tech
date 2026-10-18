@@ -1,11 +1,12 @@
-import pytest
 from tests.utils.personas import generate_salaried_individual_persona
+from tests.utils.random_generator import RandomGenerator
 from tests.utils.request_generator import RequestGenerator
 
 
 class TestPersonas:
     def test_salaried_individual_persona_has_zero_rejections(self):
-        payloads = generate_salaried_individual_persona(seed="test-salaried-1")
+        seed = f"sal-{RandomGenerator.uuid()[:8]}"
+        payloads = generate_salaried_individual_persona(seed=seed)
         assert len(payloads) >= 5
 
         decisions = []

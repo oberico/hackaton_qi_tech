@@ -40,7 +40,7 @@ Arquivos de contrato (só o Ramon altera): `database/database.sql`, `src/engine/
 | T19 | `tests/engine/test_readme_rules.py`: README × `policy.py` (rule_code e valores) | ALTA | Ramon (Chaz) | Victoria | T04, T18 | 30 | 06:15 | pronto |
 | T20 | Memória do motor: `account_device`/`account_counterparty` (só `approved`, incremento atômico), device unknown → observing → trusted, `TRUST_RECURRENT_BENEFICIARY`, `TRUST_MATURE_SELF_PIX` | ALTA | Ramon (Chaz/Rune) | Victoria | T15 | 60 | 07:00 | pronto |
 | T21 | Regras HOW/WHO de profundidade: `HOW_ABOVE_CUSTOMER_CEILING` (fases 0/1/2), `HOW_EARLY_MORNING_AMOUNT`, `HOW_RETRY_AFTER_REJECTION` (sondagem), `HOW_TEST_PIX`, `WHO_DEVICE_UNKNOWN` | MÉDIA | Victoria | Ramon | T16, D4 | 60 | 06:30 | pronto |
-| T23 | Personas + `scripts/farm.py` + relatório de taxas (2FA e rejeição) por `policy_version` | MÉDIA | Victoria | Ramon | T15, T21 | 60 | 07:30 | a fazer |
+| T23 | Personas + `scripts/farm.py` + relatório de taxas (2FA e rejeição) por `policy_version` | MÉDIA | Victoria | Ramon | T15, T21 | 60 | 07:30 | fazendo |
 | T24 | README: `## Modelo de dados`, `## Opções descartadas`, `## Limitações conhecidas` | BAIXA | Natalia | Victoria | T17 | 30 | 06:50 | pronto |
 
 ### P2 — só se sobrar tempo (corta primeiro)
