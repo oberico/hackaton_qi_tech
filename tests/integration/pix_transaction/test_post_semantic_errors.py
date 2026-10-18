@@ -1,3 +1,5 @@
+from datetime import datetime, timedelta, timezone
+
 from tests.utils import PayloadGenerator, RequestGenerator
 
 ERROR_FIELDS = {"title", "description", "translation", "code"}
@@ -91,3 +93,28 @@ class TestPostSemanticErrors:
         get_status, get_response = RequestGenerator.GET_pix_transaction(payload["id"])
         assert get_status == 404
         assert get_response["code"] == "RNV001039"
+
+    def test_transaction_date_10_minutes_in_future_returns_422_rnv001041(self):
+        payload = PayloadGenerator.create_challenge_example_payload()
+        future_dt = datetime.now(timezone.utc) + timedelta(minutes=10)
+        payload["transaction_date"] = future_dt.isoformat()
+
+        status, response = RequestGenerator.POST_pix_transaction(payload)
+
+        assert status == 422
+        assert set(response.keys()) == ERROR_FIELDS
+        assert response["code"] == "RNV001041"
+
+        get_status, get_response = RequestGenerator.GET_pix_transaction(payload["id"])
+        assert get_status == 404
+        assert get_response["code"] == "RNV001039"
+
+    def test_transaction_date_4_minutes_in_future_returns_201(self):
+        payload = PayloadGenerator.create_challenge_example_payload()
+        future_dt = datetime.now(timezone.utc) + timedelta(minutes=4)
+        payload["transaction_date"] = future_dt.isoformat()
+
+        status, response = RequestGenerator.POST_pix_transaction(payload)
+
+        assert status == 201
+        assert response["status"] in ("approved", "two_factor_required", "rejected")
