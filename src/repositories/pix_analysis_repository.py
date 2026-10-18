@@ -1,4 +1,4 @@
-from typing import Tuple
+from typing import Optional, Tuple
 
 from sqlalchemy import select
 
@@ -43,3 +43,8 @@ class PixAnalysisRepository:
                 .where(PixAnalysis.id == pix_analysis_id)
             ).one()
         )
+
+    def find_id_by_pix_transaction_id(self, pix_transaction_id: int) -> Optional[int]:
+        return self.session.execute(
+            select(PixAnalysis.id).where(PixAnalysis.pix_transaction_id == pix_transaction_id)
+        ).scalar_one_or_none()

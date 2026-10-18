@@ -1,10 +1,12 @@
 import os
 import time
 from datetime import datetime
+from typing import Tuple
 
 from controllers.base_controller import BaseController
 from controllers.risk_context_builder import build_risk_context, person_type_of, utc_offset_minutes_of
 from dtos import PixAnalysisDto
+from errors import PixIdReusedWithDifferentPayload
 from repositories import (
     AccountHolderRepository,
     AccountRepository,
@@ -73,7 +75,7 @@ class PixTransactionController(BaseController):
         self.axes = PixAnalysisAxisRepository(self.context)
         self.rules = PixAnalysisRuleRepository(self.context)
 
-    def create(self, payload: dict) -> dict:
+    def create(self, payload: dict) -> Tuple[dict, bool]:
         started_at = time.perf_counter()
         source_account, _ = self._upsert_account(OWN_PARTICIPANT, payload["source_account"])
         destination_account, destination_participant = self._upsert_account(
@@ -84,11 +86,19 @@ class PixTransactionController(BaseController):
             destination_account_id=destination_account.id,
             **_transaction_fields(payload),
         )
+        if pix_transaction is None:
+            return self._replay(payload), False
         context = build_risk_context(payload, source_account, destination_account, destination_participant)
         result = evaluate(context)
         pix_analysis = self._record_analysis(pix_transaction.id, result, context, started_at)
         self.session.commit()
-        return self._to_dto(pix_analysis.id)
+        return self._to_dto(pix_analysis.id), True
+
+    def _replay(self, payload: dict) -> dict:
+        existing = self.transactions.find_by_transaction_id(payload["id"])
+        if existing.payload_hash != payload_hash(payload):
+            raise PixIdReusedWithDifferentPayload()
+        return self._to_dto(self.analyses.find_id_by_pix_transaction_id(existing.id))
 
     def _record_analysis(self, pix_transaction_id: int, result: EngineResult, context: RiskContext, started_at: float):
         pix_analysis = self.analyses.create(
