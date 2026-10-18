@@ -1,13 +1,13 @@
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
-from sqlalchemy.orm import Session
 
+from database import Context
 from models import PixParticipant
 
 
 class PixParticipantRepository:
-    def __init__(self, session: Session) -> None:
-        self.session = session
+    def __init__(self, context: Context) -> None:
+        self.session = context.db_session
 
     def get_or_create(self, ispb: str) -> PixParticipant:
         self.session.execute(

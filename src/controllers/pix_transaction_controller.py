@@ -2,9 +2,7 @@ import os
 import time
 from datetime import datetime
 
-from sqlalchemy.orm import Session
-
-from constants import SCHEMAS_DIR
+from controllers.base_controller import BaseController
 from dtos import PixAnalysisDto
 from engine import policy
 from engine.risk_context import AxisResult, Decision, DecisionBasis, EngineResult, Flow, PersonType, RiskLevel
@@ -17,9 +15,7 @@ from repositories import (
     PixTransactionRepository,
 )
 from utils.payload_hash import payload_hash
-from utils.schema_handler import validate_json
 
-POST_SCHEMA_PATH = os.path.join(SCHEMAS_DIR, "post_pix_transaction.json")
 OWN_PARTICIPANT = os.environ.get("OWN_PARTICIPANT", "99999999")
 
 
@@ -104,20 +100,18 @@ def _transaction_fields(payload: dict) -> dict:
     }
 
 
-class PixTransactionController:
-    def __init__(self, session: Session) -> None:
-        self.session = session
-        self.participants = PixParticipantRepository(session)
-        self.holders = AccountHolderRepository(session)
-        self.accounts = AccountRepository(session)
-        self.transactions = PixTransactionRepository(session)
-        self.analyses = PixAnalysisRepository(session)
-        self.axes = PixAnalysisAxisRepository(session)
+class PixTransactionController(BaseController):
+    def __init__(self) -> None:
+        super().__init__(__name__)
+        self.participants = PixParticipantRepository(self.context)
+        self.holders = AccountHolderRepository(self.context)
+        self.accounts = AccountRepository(self.context)
+        self.transactions = PixTransactionRepository(self.context)
+        self.analyses = PixAnalysisRepository(self.context)
+        self.axes = PixAnalysisAxisRepository(self.context)
 
     def create(self, payload: dict) -> dict:
         started_at = time.perf_counter()
-        validate_json(payload, POST_SCHEMA_PATH)
-
         pix_transaction = self._record_transaction(payload)
         result = _fake_engine_result()
         pix_analysis = self._record_analysis(pix_transaction.id, result, _flow(payload), started_at)

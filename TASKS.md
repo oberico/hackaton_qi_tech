@@ -12,17 +12,17 @@ Arquivos de contrato (só o Ramon altera): `database/database.sql`, `src/engine/
 
 | ID | Tarefa | Cx | Dono | Revisor | Depende de | Est. | Limite | Estado |
 |---|---|---|---|---|---|---|---|---|
-| T01 | Contrato do motor: `TriggeredRule` com `observed`/`threshold` dict + `description`/`translation`; `EngineResult` com a lista de regras avaliadas (`fired`/`not_fired`/`unavailable`) | ALTA | Ramon | Victoria | — | 20 | 01:40 | em revisão |
-| T02 | Scaffold copiado do `banco/` (Docker, compose, requirements, CI, errors, utils, middlewares, harness) | BAIXA→Ramon | Ramon (Wren) | Victoria | — | 50 | 02:10 | em revisão |
-| T03 | Esqueleto do motor + molde: `policy.py`, `evaluate`, matriz, pisos, confiança, cold start, fases, regra-molde `HOW_NIGHT_LIMIT_EXCEEDED` | ALTA | Ramon (Chaz) | Victoria | T01 | 50 | 02:30 | a fazer |
-| T04 | README: esqueleto exato do modelo + "Como o motor de decisão funciona" + "Como as regras viram decisão" + cabeçalho e formato da tabela de Regras | ALTA | Ramon (Hann) | Victoria | — | 40 | 02:00 | em revisão |
-| T05 | `POST /pix/transaction` com motor de mentira: resource, controller, repositories de gravação (titular, conta, Pix, análise, 3 eixos), DTO, formato do `metadata`, **e os 15 models, guiados pelos testes** | MÉDIA | Victoria | Ramon | T01, T02 | 140 | 03:45 | em revisão |
+| T01 | Contrato do motor: `TriggeredRule` com `observed`/`threshold` dict + `description`/`translation`; `EngineResult` com a lista de regras avaliadas (`fired`/`not_fired`/`unavailable`) | ALTA | Ramon | Victoria | — | 20 | 01:40 | pronto |
+| T02 | Scaffold copiado do `banco/` (Docker, compose, requirements, CI, errors, utils, middlewares, harness) | BAIXA→Ramon | Ramon (Wren) | Victoria | — | 50 | 02:10 | pronto |
+| T03 | Esqueleto do motor + molde: `policy.py`, `evaluate`, matriz, pisos, confiança, cold start, fases, regra-molde `HOW_NIGHT_LIMIT_EXCEEDED` | ALTA | Ramon (Chaz) | Victoria | T01 | 50 | 02:30 | pronto |
+| T04 | README: esqueleto exato do modelo + "Como o motor de decisão funciona" + "Como as regras viram decisão" + cabeçalho e formato da tabela de Regras | ALTA | Ramon (Hann) | Victoria | — | 40 | 02:00 | pronto |
+| T05 | `POST /pix/transaction` com motor de mentira: resource, controller, repositories de gravação (titular, conta, Pix, análise, 3 eixos), DTO, formato do `metadata`, **e os 15 models, guiados pelos testes** | MÉDIA | Victoria | Ramon | T01, T02 | 140 | 03:45 | pronto |
 | T06 | ~~Models SQLAlchemy~~ absorvido pelo T05: os 15 models nascem dos testes do POST (sem teste próprio, não há ciclo TDD) | — | Victoria (no T05) | Ramon | — | 0 | — | cortado |
 | T07 | `GET /pix/transaction/{id}` (200 / 404 `RNV001039`) + seção `## Contrato da API` do README | MÉDIA | Victoria | Ramon | T05 | 30 | 03:30 | a fazer |
-| T08 | Regras WHERE do payload: `WHERE_DESTINATION_NEW_ACCOUNT`, `WHERE_UNKNOWN_PARTICIPANT` | BAIXA | Natalia | Ramon | T03 | 40 | 03:30 | em revisão |
+| T08 | Regras WHERE do payload: `WHERE_DESTINATION_NEW_ACCOUNT`, `WHERE_UNKNOWN_PARTICIPANT` | BAIXA | Natalia | Ramon | T03 | 40 | 03:30 | pronto |
 | T09 | Idempotência com concorrência: `IntegrityError` → rollback → hash → 200 / 422 `RNV001024`; 10x o mesmo `id` → uma análise | ALTA | Ramon (Chaz) | Victoria | T05 | 45 | 04:15 | a fazer |
 | T10 | Motor real no controller: `RiskContext` montado do payload (flow, idades, listed, IP privado), `evaluate`, gravação de `pix_analysis_rule` (todas as regras avaliadas) | ALTA | Ramon (Chaz) | Victoria | T03, T05 | 60 | 04:30 | a fazer |
-| T11 | Testes de integração dos erros de formato: 400 (`RNV000001`, `RNV000007`–`010`) e 403 `RNV000002` no POST e no GET | BAIXA | Natalia | Victoria | T05, T07 | 40 | 04:15 | a fazer |
+| T11 | Testes de integração dos erros de formato: 400 (`RNV000001`, `RNV000007`–`010`) e 403 `RNV000002` no POST e no GET | BAIXA | Natalia | Victoria | T05, T07 | 40 | 04:15 | pronto (coberto pelo refactor: 400 granulares e 403 por HTTP em `test_pix_transaction_create.py`) |
 | T12 | Validações de sentido: 422 `RNV001002`, `RNV001020`, `RNV001040`–`043`; 409 `RNV001044` | MÉDIA | Victoria | Ramon | T07 | 70 | 04:45 | a fazer |
 | T13 | Teste de integração: payload de exemplo do desafio → `rejected` (`two_suspicious_axes`) | BAIXA | Natalia | Victoria | T03, T05 | 20 | 04:30 | a fazer |
 | T14 | Regras WHERE de histórico: `WHERE_DESTINATION_FAN_IN` (critical, por fluxo), `WHERE_DESTINATION_REJECTIONS` (critical, fundada suspeita) | BAIXA | Natalia | Ramon | T08 | 45 | 05:15 | a fazer |
@@ -37,7 +37,7 @@ Arquivos de contrato (só o Ramon altera): `database/database.sql`, `src/engine/
 
 | ID | Tarefa | Cx | Dono | Revisor | Depende de | Est. | Limite | Estado |
 |---|---|---|---|---|---|---|---|---|
-| T19 | `tests/unit/test_readme_rules.py`: README × `policy.py` (rule_code e valores) | ALTA | Ramon (Chaz) | Victoria | T04, T18 | 30 | 06:15 | a fazer |
+| T19 | `tests/engine/test_readme_rules.py`: README × `policy.py` (rule_code e valores) | ALTA | Ramon (Chaz) | Victoria | T04, T18 | 30 | 06:15 | a fazer |
 | T20 | Memória do motor: `account_device`/`account_counterparty` (só `approved`, incremento atômico), device unknown → observing → trusted, `TRUST_RECURRENT_BENEFICIARY`, `TRUST_MATURE_SELF_PIX` | ALTA | Ramon (Chaz/Rune) | Victoria | T15 | 60 | 07:00 | a fazer |
 | T21 | Regras HOW/WHO de profundidade: `HOW_ABOVE_CUSTOMER_CEILING` (fases 0/1/2), `HOW_EARLY_MORNING_AMOUNT`, `HOW_RETRY_AFTER_REJECTION` (sondagem), `HOW_TEST_PIX`, `WHO_DEVICE_UNKNOWN` | MÉDIA | Victoria | Ramon | T16, D4 | 60 | 06:30 | a fazer |
 | T23 | Personas + `scripts/farm.py` + relatório de taxas (2FA e rejeição) por `policy_version` | MÉDIA | Victoria | Ramon | T15, T21 | 60 | 07:30 | a fazer |
@@ -104,7 +104,7 @@ Ordem: T01 → T03 (+ T04 em paralelo) → R1 → T09 + T10 → R2 (T15 em paral
 - **T10** · arquivos: `src/controllers/risk_context_builder.py`, `src/controllers/pix_transaction_controller.py` (troca do motor de mentira), `src/repositories/pix_analysis_rule_repository.py`, `tests/integration/pix_transaction/test_post_decision.py` · pronto: T13 verde; uma linha em `pix_analysis_rule` por regra avaliada · README: nenhuma.
 - **T15** · arquivos: `src/repositories/risk_history_repository.py`, `src/controllers/risk_context_builder.py`, `tests/integration/pix_transaction/test_history_windows.py`, `docs/modelo-de-dados.md` (tabela Caminho de acesso) · cada consulta usa o índice covering da linha correspondente (Index Only Scan, `Heap Fetches: 0`); device conta `account_holder` distintos, não contas · pronto: cada campo de histórico do P0 com teste de integração; toda consulta com igualdade indexada + janela ≤ 90 dias anterior ao Pix; `latency_ms` < 100 · README: nenhuma (o "o que conta em cada consulta" entra em "Como as regras viram decisão" no T18).
 - **T18** · arquivos: `README.md` (seção "Como as regras viram decisão" + revisão da tabela) · pronto: exemplo de ponta a ponta com o `metadata` real da API.
-- **T19** · arquivos: `tests/unit/test_readme_rules.py` · pronto: falha se faltar ou sobrar `rule_code` ou se um valor divergir.
+- **T19** · arquivos: `tests/engine/test_readme_rules.py` · pronto: falha se faltar ou sobrar `rule_code` ou se um valor divergir.
 - **T20** · arquivos: `src/repositories/{account_device,account_counterparty}_repository.py`, `src/controllers/pix_transaction_controller.py`, `src/controllers/risk_context_builder.py`, `src/engine/trust.py`, testes de integração e de unidade correspondentes · README: linhas `TRUST_*`.
 - **T29** · pronto: clone novo → `docker compose up` → `curl` do README → `pytest` verde; `develop` → `main`.
 
@@ -119,6 +119,12 @@ Ordem: **T02 → T06 → T08 → T11 → T13 → T14 → T17** (P0) → T22 → 
 Primeiro passo (01:15): branch `feat/T02-scaffold`, copiar a infraestrutura do `banco/` do `oberico/desafio_qitech`.
 Depende de: Ramon (T03 molde para T08/T14), Victoria (T05/T07 para T11, T13, T17).
 Dependem dela: todos (T02 e T06 destravam a API).
+
+## Refactor de 05:00 (camadas adjacentes + testes no padrão do base service)
+- Branch `refactor/layers-and-tests-base-service`: resource com `@SchemaHandler.validate` e `XController()`; `BaseController` com o contexto; repositories com `Context`; controller sem `sqlalchemy`. `tests/architecture/` garante isso.
+- Testes: integração em `class Test<Operação>` com o harness de `tests/utils/` (`RequestGenerator`, `PayloadGenerator`, `ObjectGenerator`, `RandomGenerator`); motor em `tests/engine/` só com matriz e bordas em tabelas. `tests/unit/` deixou de existir.
+- Prompts de `docs/tarefas/` e `.local/ramon/` atualizados com o bloco "PADRÃO DE CAMADAS E TESTES".
+- Natalia e Victoria: rebase das branches abertas depois do merge do refactor.
 
 ## Regra de TDD (vale para toda tarefa de código)
 - Cada ciclo (um comportamento observável, ponta a ponta pela interface pública) tem 3 commits: `test(ID): red`, `feat(ID): green`, `refactor(ID)`. A descrição do PR traz a seção "Ciclos TDD" com a saída real do red e do green. Sem ela o PR volta. O protocolo completo está em cada `docs/tarefas/<ID>.md`.

@@ -1,7 +1,10 @@
+import functools
 import json
+import os
 
 from jsonschema import Draft7Validator, validators
 
+from constants import SCHEMAS_DIR
 from errors.custom_errors import (
     FieldNotAllowed,
     InvalidFormat,
@@ -31,15 +34,36 @@ RANGE_KEYWORDS = {
 }
 
 
-def validate_json(payload: dict, schema_path: str, root: str = "body") -> dict:
-    with open(schema_path, encoding="utf-8") as schema_file:
-        schema = json.load(schema_file)
+class SchemaCache:
+    schemas = {}
 
+    @staticmethod
+    def get_schema(schema_file_name: str) -> dict:
+        if schema_file_name not in SchemaCache.schemas:
+            schema_path = os.path.join(SCHEMAS_DIR, schema_file_name)
+            with open(schema_path, encoding="utf-8") as schema_file:
+                SchemaCache.schemas[schema_file_name] = json.load(schema_file)
+        return SchemaCache.schemas[schema_file_name]
+
+
+class SchemaHandler:
+    @staticmethod
+    def validate(schema_file_name: str, root: str = "body"):
+        def decorator_validate(func):
+            @functools.wraps(func)
+            def wrapper_validate(*args, **kwargs):
+                validate_payload(kwargs["payload"], SchemaCache.get_schema(schema_file_name), root)
+                return func(*args, **kwargs)
+
+            return wrapper_validate
+
+        return decorator_validate
+
+
+def validate_payload(payload, schema: dict, root: str) -> None:
     error = next(iter(StrictDraft7Validator(schema).iter_errors(payload)), None)
     if error is not None:
         raise schema_error(error, root)
-
-    return payload
 
 
 def schema_error(error, root: str) -> Exception:

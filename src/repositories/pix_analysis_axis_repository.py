@@ -1,14 +1,14 @@
 from typing import Dict
 
 from sqlalchemy import select
-from sqlalchemy.orm import Session
 
+from database import Context
 from models import PixAnalysisAxis, RiskLevel, RuleAxis
 
 
 class PixAnalysisAxisRepository:
-    def __init__(self, session: Session) -> None:
-        self.session = session
+    def __init__(self, context: Context) -> None:
+        self.session = context.db_session
 
     def create_all(self, pix_analysis_id: int, levels: Dict[str, str]) -> None:
         self.session.add_all(

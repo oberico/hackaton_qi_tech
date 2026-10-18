@@ -1,46 +1,46 @@
-import requests
+from os import environ
 
-DEFAULT_TIMEOUT_SECONDS = 10
+from tests.utils.requisition import BaseConnectorResponse, ClientRequisition
+
+INTERNAL_TOKEN = environ.get("INTERNAL_TOKEN", "internal-token-dev")
+INTERNAL_HEADERS = {"INTERNAL-TOKEN": INTERNAL_TOKEN}
+PIX_TRANSACTION_ENDPOINT = "/pix/transaction"
+JSON_CONTENT_TYPE = {"Content-Type": "application/json"}
 
 
 class RequestGenerator:
-    def __init__(self, base_url: str, timeout: int = DEFAULT_TIMEOUT_SECONDS):
-        self.base_url = base_url.rstrip("/")
-        self.timeout = timeout
-
-    def get(self, path: str, headers: dict = None, params: dict = None) -> tuple:
-        return self._send("GET", path, headers=headers, params=params)
-
-    def post(self, path: str, body: dict = None, headers: dict = None) -> tuple:
-        return self._send("POST", path, body=body, headers=headers)
-
-    def put(self, path: str, body: dict = None, headers: dict = None) -> tuple:
-        return self._send("PUT", path, body=body, headers=headers)
-
-    def delete(self, path: str, headers: dict = None) -> tuple:
-        return self._send("DELETE", path, headers=headers)
-
-    def request_with_headers(self, method: str, path: str, body: dict = None, headers: dict = None) -> tuple:
-        response = self._request(method, path, body=body, headers=headers)
-        return response.status_code, self._parse(response), response.headers
-
-    def _send(self, method: str, path: str, body: dict = None, headers: dict = None, params: dict = None) -> tuple:
-        response = self._request(method, path, body=body, headers=headers, params=params)
-        return response.status_code, self._parse(response)
-
-    def _request(self, method: str, path: str, body: dict = None, headers: dict = None, params: dict = None):
-        return requests.request(
-            method,
-            f"{self.base_url}{path}",
-            json=body,
-            headers=headers,
-            params=params,
-            timeout=self.timeout,
-        )
+    @staticmethod
+    def POST_pix_transaction(pix_transaction_payload) -> tuple:
+        response = ClientRequisition.send("POST", PIX_TRANSACTION_ENDPOINT, payload=pix_transaction_payload, headers=INTERNAL_HEADERS)
+        return response.response_status, response.response_json
 
     @staticmethod
-    def _parse(response) -> dict:
-        try:
-            return response.json()
-        except ValueError:
-            return None
+    def POST_pix_transaction_raw_body(raw_body: str) -> tuple:
+        headers = {**INTERNAL_HEADERS, **JSON_CONTENT_TYPE}
+        response = ClientRequisition.send("POST", PIX_TRANSACTION_ENDPOINT, data=raw_body, headers=headers)
+        return response.response_status, response.response_json
+
+    @staticmethod
+    def POST_pix_transaction_with_token(pix_transaction_payload: dict, internal_token: str = None) -> tuple:
+        headers = {} if internal_token is None else {"INTERNAL-TOKEN": internal_token}
+        response = ClientRequisition.send("POST", PIX_TRANSACTION_ENDPOINT, payload=pix_transaction_payload, headers=headers)
+        return response.response_status, response.response_json
+
+    @staticmethod
+    def GET_pix_transaction(transaction_id: str) -> tuple:
+        response = ClientRequisition.send("GET", f"{PIX_TRANSACTION_ENDPOINT}/{transaction_id}", headers=INTERNAL_HEADERS)
+        return response.response_status, response.response_json
+
+    @staticmethod
+    def GET_home() -> tuple:
+        response = ClientRequisition.send("GET", "/")
+        return response.response_status, response.response_json
+
+    @staticmethod
+    def GET_health_check() -> tuple:
+        response = ClientRequisition.send("GET", "/health_check")
+        return response.response_status, response.response_json
+
+    @staticmethod
+    def send_without_token(method: str, endpoint: str) -> BaseConnectorResponse:
+        return ClientRequisition.send(method, endpoint)

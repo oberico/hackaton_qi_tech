@@ -19,11 +19,10 @@ SessionLocal = sessionmaker(bind=engine, autoflush=False)
 
 
 class Context:
-    def __init__(self, db_session: Optional[Session] = None) -> None:
-        self.db_session = db_session
+    def __init__(self) -> None:
+        self.db_session: Optional[Session] = None
 
-    @property
-    def session(self) -> Session:
+    def get_or_create_session(self) -> Session:
         if self.db_session is None:
             self.db_session = SessionLocal()
         return self.db_session
@@ -34,12 +33,6 @@ _context: ContextVar[Optional[Context]] = ContextVar("context", default=None)
 
 def open_context() -> Context:
     context = Context()
-    _context.set(context)
-    return context
-
-
-def set_context(session: Session) -> Context:
-    context = Context(session)
     _context.set(context)
     return context
 

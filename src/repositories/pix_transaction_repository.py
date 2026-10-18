@@ -1,11 +1,10 @@
-from sqlalchemy.orm import Session
-
+from database import Context
 from models import PixTransaction
 
 
 class PixTransactionRepository:
-    def __init__(self, session: Session) -> None:
-        self.session = session
+    def __init__(self, context: Context) -> None:
+        self.session = context.db_session
 
     def create(self, **fields) -> PixTransaction:
         pix_transaction = PixTransaction(**fields)

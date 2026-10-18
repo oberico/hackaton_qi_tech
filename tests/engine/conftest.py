@@ -3,6 +3,8 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
+from src.engine import trust
+from src.engine.analyzers import how, where, who
 from src.engine.risk_context import (
     BeneficiaryRelationship,
     DestinationHistory,
@@ -13,10 +15,13 @@ from src.engine.risk_context import (
     PayerHistory,
     PersonType,
     RiskContext,
+    RiskLevel,
     TransactionFacts,
 )
+from src.engine.rules import fired
 
 DEFAULT_UTC_OFFSET_MINUTES = -180
+ANALYZERS = {"who": who, "how": how, "where": where}
 
 
 def local_datetime(hour, minute=0, utc_offset_minutes=DEFAULT_UTC_OFFSET_MINUTES, day=17):
@@ -77,11 +82,30 @@ def make_context(**overrides):
     return context
 
 
-@pytest.fixture(name="make_context")
-def make_context_fixture():
-    return make_context
+def stub_rules(axis, level):
+    if level == RiskLevel.OK:
+        return []
+    return [fired(f"{axis.upper()}_STUB", axis, level, {}, {}, "stub", "stub")]
 
 
-@pytest.fixture(name="local_datetime")
-def local_datetime_fixture():
-    return local_datetime
+def rule_of(result, code):
+    matches = [rule for rule in result.evaluated_rules if rule.code == code]
+    assert len(matches) == 1, f"{code} was not evaluated exactly once"
+    return matches[0]
+
+
+@pytest.fixture
+def stub_axes(monkeypatch):
+    def apply(who_level, how_level, where_level):
+        for axis, level in (("who", who_level), ("how", how_level), ("where", where_level)):
+            monkeypatch.setattr(ANALYZERS[axis], "analyze", lambda context, axis=axis, level=level: stub_rules(axis, level))
+
+    return apply
+
+
+@pytest.fixture
+def stub_trust_signals(monkeypatch):
+    def apply(signals):
+        monkeypatch.setattr(trust, "detect_signals", lambda context: list(signals))
+
+    return apply
