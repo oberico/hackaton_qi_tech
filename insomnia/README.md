@@ -8,8 +8,6 @@ Testes manuais e de carga do motor antifraude, no estilo do pytest, mas pela int
 2. Insomnia → Create → Import → `insomnia/antifraud-pix.insomnia.json`.
 3. A URL (`http://localhost:8001`) e o token (`internal-token-dev`) estão escritos direto em cada requisição; não depende de ambiente. O ambiente "Base Environment" existe só como referência.
 
-`run` (padrão `1001`) entra nos números de conta e nos ids. Para repetir um cenário do zero (sem o histórico da rodada anterior, que muda a decisão), regere a coleção: `python3 insomnia/gen_insomnia.py insomnia --run 1002` (opções: `--base-url`, `--token`) e reimporte.
-
 ## Pastas
 
 | Pasta | O que mostra | Esperado |
@@ -31,7 +29,7 @@ Não precisa de arquivo de dados: cada requisição da pasta usa `{% uuid 'v4' %
 1. Clique com o botão direito na pasta **6. Carga e latência** → Run (Collection Runner).
 2. **A** e **C**: Iterations = 200, Delay = 0 a 50 ms.
 3. **B**: Iterations = 20, Delay = 0 (rajada de um pagador só; deve escalar para 2FA e depois rejected).
-4. A tabela do Runner mostra status e tempo de cada resposta. A mesma rajada B com o mesmo `run` encontra o histórico da rodada anterior: regere com outro `--run`.
+4. A tabela do Runner mostra status e tempo de cada resposta.
 
 ## Conferido e não conferido
 
