@@ -10,7 +10,7 @@ from errors.custom_errors import (
     ServiceBusy,
     ValueOutOfRange,
 )
-from errors.pix_transaction_errors import PixTransactionNotFound
+from errors.pix_transaction_errors import PixIdReusedWithDifferentPayload, PixTransactionNotFound
 
 __all__ = [
     "QIException",
@@ -21,6 +21,7 @@ __all__ = [
     "MethodNotAllowed",
     "MissingField",
     "NotFoundRoute",
+    "PixIdReusedWithDifferentPayload",
     "PixTransactionNotFound",
     "ServiceBusy",
     "ValueOutOfRange",

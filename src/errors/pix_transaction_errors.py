@@ -1,6 +1,17 @@
 from errors.base_error import QIException
 
 
+class PixIdReusedWithDifferentPayload(QIException):
+    code = "RNV001024"
+
+    def __init__(self) -> None:
+        title = "Pix Id Reused With Different Payload"
+        http_status = 422
+        description = "A Pix with this id was already received with a different payload; the id cannot be reused."
+        translation = "Já existe um Pix recebido com este id e conteúdo diferente; o id não pode ser reutilizado."
+        super().__init__(title, self.code, http_status, description, translation)
+
+
 class PixTransactionNotFound(QIException):
     code = "RNV001039"
 

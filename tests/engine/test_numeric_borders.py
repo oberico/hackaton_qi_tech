@@ -1,5 +1,6 @@
 import pytest
 
+from src.engine import policy
 from src.engine.engine import evaluate
 from src.engine.risk_context import Decision, DecisionBasis, DeviceTrust, Flow, RiskLevel, RuleOutcome
 from tests.engine.conftest import local_datetime, make_context, rule_of
@@ -122,6 +123,74 @@ def test_where_rule_border(code, transaction, fires, observed, threshold):
     assert (result.decision, result.decision_basis) == (TWO_FACTOR_BY_AXIS if fires else APPROVED)
 
 
+REJECTED_BY_CRITICAL_AXIS = (Decision.REJECTED, DecisionBasis.CRITICAL_AXIS)
+
+FAN_IN_BORDERS = {
+    "pf_pf_two_payers": (Flow.PF_PF, 7, 2, False, 3),
+    "pf_pf_three_payers": (Flow.PF_PF, 7, 3, True, 3),
+    "pf_pj_nine_payers": (Flow.PF_PJ, 7, 9, False, 10),
+    "pf_pj_ten_payers": (Flow.PF_PJ, 7, 10, True, 10),
+    "pj_pf_two_payers": (Flow.PJ_PF, 7, 2, False, 3),
+    "pj_pf_three_payers": (Flow.PJ_PF, 7, 3, True, 3),
+    "pj_pj_nine_payers": (Flow.PJ_PJ, 7, 9, False, 10),
+    "pj_pj_ten_payers": (Flow.PJ_PJ, 7, 10, True, 10),
+    "destination_twenty_nine_days_old": (Flow.PF_PF, 29, 3, True, 3),
+    "destination_exactly_thirty_days_old": (Flow.PF_PF, 30, 3, False, 3),
+    "mature_destination_with_many_payers": (Flow.PF_PF, 400, 50, False, 3),
+}
+
+
+def expected_without_fan_in(destination_age_days):
+    return TWO_FACTOR_BY_AXIS if destination_age_days < 30 else APPROVED
+
+
+@pytest.mark.parametrize("flow, destination_age_days, payers, fires, threshold_payers", FAN_IN_BORDERS.values(), ids=FAN_IN_BORDERS.keys())
+def test_destination_fan_in_border(flow, destination_age_days, payers, fires, threshold_payers):
+    context = make_context(
+        transaction={"flow": flow, "destination_account_age_days": destination_age_days},
+        destination={"distinct_payers_24h": payers},
+    )
+
+    result = evaluate(context)
+
+    rule = rule_of(result, "WHERE_DESTINATION_FAN_IN")
+    assert (rule.outcome, rule.observed, rule.threshold) == (
+        RuleOutcome.FIRED if fires else RuleOutcome.NOT_FIRED,
+        {"distinct_payers_24h": payers, "destination_account_age_days": destination_age_days},
+        {"distinct_payers_24h": threshold_payers, "destination_account_age_days": 30},
+    )
+    assert (rule.axis, rule.level) == ("where", RiskLevel.CRITICAL if fires else None)
+    assert rule.description and rule.translation
+    assert [reason.code for reason in result.where.rules if reason.code == "WHERE_DESTINATION_FAN_IN"] == (
+        ["WHERE_DESTINATION_FAN_IN"] if fires else []
+    )
+    assert (result.decision, result.decision_basis) == (REJECTED_BY_CRITICAL_AXIS if fires else expected_without_fan_in(destination_age_days))
+
+
+REJECTIONS_BORDERS = {
+    "no_rejections": (0, False),
+    "one_rejecting_payer": (1, False),
+    "two_rejecting_payers": (2, True),
+    "many_rejecting_payers": (5, True),
+}
+
+
+@pytest.mark.parametrize("rejections, fires", REJECTIONS_BORDERS.values(), ids=REJECTIONS_BORDERS.keys())
+def test_destination_rejections_border(rejections, fires):
+    result = evaluate(make_context(destination={"rejections_from_distinct_payers_24h": rejections}))
+
+    rule = rule_of(result, "WHERE_DESTINATION_REJECTIONS")
+    assert (rule.outcome, rule.observed, rule.threshold) == (
+        RuleOutcome.FIRED if fires else RuleOutcome.NOT_FIRED,
+        {"rejections_from_distinct_payers_24h": rejections},
+        {"rejections_from_distinct_payers_24h": 2},
+    )
+    assert (rule.axis, rule.level) == ("where", RiskLevel.CRITICAL if fires else None)
+    assert rule.description and rule.translation
+    assert [reason.code for reason in result.where.rules] == (["WHERE_DESTINATION_REJECTIONS"] if fires else [])
+    assert (result.decision, result.decision_basis) == (REJECTED_BY_CRITICAL_AXIS if fires else APPROVED)
+
+
 MATURITY_BORDERS = {
     "no_approved_pix": (0, 0, 0),
     "no_approved_pix_with_old_relationship": (0, 400, 0),
@@ -138,3 +207,82 @@ def test_payer_maturity_phase_border(approved_count, relationship_days, phase):
     context = make_context(payer={"approved_count": approved_count, "relationship_days": relationship_days})
 
     assert evaluate(context).maturity_phase == phase
+
+
+def test_new_account_texts_follow_the_policy_parameter(monkeypatch):
+    monkeypatch.setattr(policy, "DESTINATION_NEW_ACCOUNT_DAYS", 45)
+
+    result = evaluate(make_context(transaction={"destination_account_age_days": 40}))
+
+    rule = rule_of(result, "WHERE_DESTINATION_NEW_ACCOUNT")
+    assert rule.outcome == RuleOutcome.FIRED
+    assert rule.threshold == {"destination_account_age_days": 45}
+    assert "45" in rule.description
+    assert "45" in rule.translation
+
+
+DECISION_BY_LEVEL = {
+    None: APPROVED,
+    RiskLevel.SUSPICIOUS: TWO_FACTOR_BY_AXIS,
+    RiskLevel.CRITICAL: (Decision.REJECTED, DecisionBasis.CRITICAL_AXIS),
+}
+
+VELOCITY_THRESHOLD = {
+    Flow.PF_PF: {"suspicious": 3, "critical": 6},
+    Flow.PJ_PF: {"suspicious": 20, "critical": 40},
+}
+
+VELOCITY_BORDERS = {
+    "pf_pf_two_attempts": (Flow.PF_PF, 2, None),
+    "pf_pf_three_attempts": (Flow.PF_PF, 3, RiskLevel.SUSPICIOUS),
+    "pf_pf_five_attempts": (Flow.PF_PF, 5, RiskLevel.SUSPICIOUS),
+    "pf_pf_six_attempts": (Flow.PF_PF, 6, RiskLevel.CRITICAL),
+    "pj_pf_nineteen_attempts": (Flow.PJ_PF, 19, None),
+    "pj_pf_twenty_attempts": (Flow.PJ_PF, 20, RiskLevel.SUSPICIOUS),
+    "pj_pf_thirty_nine_attempts": (Flow.PJ_PF, 39, RiskLevel.SUSPICIOUS),
+    "pj_pf_forty_attempts": (Flow.PJ_PF, 40, RiskLevel.CRITICAL),
+}
+
+
+@pytest.mark.parametrize("flow, attempts, level", VELOCITY_BORDERS.values(), ids=VELOCITY_BORDERS.keys())
+def test_velocity_border(flow, attempts, level):
+    context = make_context(transaction={"flow": flow}, payer={"transactions_last_10min": attempts})
+
+    result = evaluate(context)
+
+    rule = rule_of(result, "HOW_VELOCITY_EXCEEDED")
+    assert (rule.outcome, rule.level) == (RuleOutcome.FIRED if level else RuleOutcome.NOT_FIRED, level)
+    assert (rule.observed, rule.threshold) == ({"attempts": attempts}, VELOCITY_THRESHOLD[flow])
+    assert rule.axis == "how"
+    assert rule.description and rule.translation
+    assert result.how.level == (level or RiskLevel.OK)
+    assert (result.decision, result.decision_basis) == DECISION_BY_LEVEL[level]
+
+
+DEVICE_COMPROMISED_THRESHOLD = {"distinct_documents_total": 3, "distinct_documents_24h": 2}
+
+DEVICE_COMPROMISED_BORDERS = {
+    "two_documents_in_total": (2, 0, None),
+    "three_documents_in_total": (3, 0, RiskLevel.CRITICAL),
+    "one_document_in_24h": (1, 1, None),
+    "two_documents_in_24h": (2, 2, RiskLevel.CRITICAL),
+    "two_in_total_and_one_in_24h": (2, 1, None),
+    "three_in_total_and_two_in_24h": (3, 2, RiskLevel.CRITICAL),
+}
+
+
+@pytest.mark.parametrize("total, last_24h, level", DEVICE_COMPROMISED_BORDERS.values(), ids=DEVICE_COMPROMISED_BORDERS.keys())
+def test_device_compromised_border(total, last_24h, level):
+    context = make_context(device={"distinct_documents_total": total, "distinct_documents_24h": last_24h})
+
+    result = evaluate(context)
+
+    rule = rule_of(result, "WHO_DEVICE_COMPROMISED")
+    assert (rule.outcome, rule.level) == (RuleOutcome.FIRED if level else RuleOutcome.NOT_FIRED, level)
+    assert (rule.observed, rule.threshold) == (
+        {"distinct_documents_total": total, "distinct_documents_24h": last_24h}, DEVICE_COMPROMISED_THRESHOLD,
+    )
+    assert rule.axis == "who"
+    assert rule.description and rule.translation
+    assert result.who.level == (level or RiskLevel.OK)
+    assert (result.decision, result.decision_basis) == DECISION_BY_LEVEL[level]

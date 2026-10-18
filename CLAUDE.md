@@ -138,7 +138,7 @@ Não perguntamos "quão arriscado é". Perguntamos **qual é a dúvida**:
 | Rejeições no destino | rejected | "fundada suspeita" (Res. BCB 501/2025) |
 | Teto do cliente, device confiável, destinatário recorrente | approved | conservador: só o que CERTAMENTE saiu |
 
-As consultas trazem só o histórico anterior ao Pix analisado; o motor soma o Pix corrente (`amount`) às somas de limite. O repository fica com uma responsabilidade (buscar o passado) e a aritmética fica no motor, testável sem banco.
+As consultas trazem só o histórico anterior ao Pix analisado; o motor soma o Pix corrente (`amount`) às somas de limite. **Contagens de pagadores distintos** (fan-in do destino, pagadores por IP) e **a velocity** (tentativas em 10 min) **incluem o pagador e a tentativa do Pix em análise** ("3+ pagadores" dispara no 3º pagador, não no 4º); **rejeições no destino** contam só rejeições de **outros** pagadores. O repository fica com uma responsabilidade (buscar o passado) e a aritmética fica no motor, testável sem banco.
 
 ## Motor
 **Níveis por eixo:** `ok` / `suspicious` / `critical`.

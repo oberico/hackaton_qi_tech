@@ -37,6 +37,17 @@ JOIN pix_transaction pix ON pix.id = analysis.pix_transaction_id
 WHERE pix.transaction_id = %s
 """
 
+TRANSACTION_COUNT_QUERY = """
+SELECT count(*) AS total FROM pix_transaction WHERE transaction_id = %s
+"""
+
+ANALYSIS_KEYS_QUERY = """
+SELECT analysis.analysis_key
+FROM pix_analysis analysis
+JOIN pix_transaction pix ON pix.id = analysis.pix_transaction_id
+WHERE pix.transaction_id = %s
+"""
+
 
 class DatabaseInspector:
     @staticmethod
@@ -71,3 +82,11 @@ class DatabaseInspector:
     @staticmethod
     def latency_ms(transaction_id: str) -> int:
         return DatabaseInspector.fetch(LATENCY_QUERY, transaction_id)[0]["latency_ms"]
+
+    @staticmethod
+    def transaction_count(transaction_id: str) -> int:
+        return DatabaseInspector.fetch(TRANSACTION_COUNT_QUERY, transaction_id)[0]["total"]
+
+    @staticmethod
+    def analysis_keys(transaction_id: str) -> List[str]:
+        return [row["analysis_key"] for row in DatabaseInspector.fetch(ANALYSIS_KEYS_QUERY, transaction_id)]
