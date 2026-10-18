@@ -118,3 +118,19 @@ class TestPostSemanticErrors:
 
         assert status == 201
         assert response["status"] in ("approved", "two_factor_required", "rejected")
+
+    def test_source_and_destination_accounts_are_the_same_returns_422_rnv001042(self):
+        payload = PayloadGenerator.create_challenge_example_payload()
+        payload["destination_account"]["participant"] = "99999999"
+        payload["destination_account"]["branch"] = payload["source_account"]["branch"]
+        payload["destination_account"]["account_number"] = payload["source_account"]["account_number"]
+
+        status, response = RequestGenerator.POST_pix_transaction(payload)
+
+        assert status == 422
+        assert set(response.keys()) == ERROR_FIELDS
+        assert response["code"] == "RNV001042"
+
+        get_status, get_response = RequestGenerator.GET_pix_transaction(payload["id"])
+        assert get_status == 404
+        assert get_response["code"] == "RNV001039"
