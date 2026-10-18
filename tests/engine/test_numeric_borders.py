@@ -311,6 +311,10 @@ CEILING_BORDERS = {
     ),
     "fractional_ceiling_is_truncated_to_whole_cents": (218571, PersonType.INDIVIDUAL, 400, [10000, 10001], None, 218571),
     "fractional_ceiling_one_cent_above": (218572, PersonType.INDIVIDUAL, 400, [10000, 10001], RiskLevel.SUSPICIOUS, 218571),
+    "large_history_raises_the_ceiling_above_the_reference": (900000, PersonType.INDIVIDUAL, 400, [1000000] * 5, None, 900000),
+    "large_history_one_cent_above_the_raised_ceiling": (900001, PersonType.INDIVIDUAL, 400, [1000000] * 5, RiskLevel.SUSPICIOUS, 900000),
+    "company_history_exactly_the_blended_ceiling": (2500000, PersonType.COMPANY, 400, [2000000] * 5, None, 2500000),
+    "company_history_one_cent_above_the_blended_ceiling": (2500001, PersonType.COMPANY, 400, [2000000] * 5, RiskLevel.SUSPICIOUS, 2500000),
 }
 
 
@@ -411,6 +415,7 @@ RETRY_BORDERS = {
     "larger_amount_is_not_a_probe": (60, 100000, 100001, False, 1),
     "rejection_twenty_minutes_ago": (1200, 100000, 50000, False, 20),
     "no_previous_rejection": (None, None, 50000, False, None),
+    "rejection_after_the_pix_under_analysis_is_ignored": (-60, 100000, 50000, False, -1),
 }
 
 
