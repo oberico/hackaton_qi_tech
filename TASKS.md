@@ -25,7 +25,7 @@ Arquivos de contrato (só o Ramon altera): `database/database.sql`, `src/engine/
 | T11 | Testes de integração dos erros de formato: 400 (`RNV000001`, `RNV000007`–`010`) e 403 `RNV000002` no POST e no GET | BAIXA | Natalia | Victoria | T05, T07 | 40 | 04:15 | pronto (coberto pelo refactor: 400 granulares e 403 por HTTP em `test_pix_transaction_create.py`) |
 | T12 | Validações de sentido: 422 `RNV001002`, `RNV001020`, `RNV001040`–`043`; 409 `RNV001044` | MÉDIA | Victoria | Ramon | T07 | 70 | 04:45 | a fazer |
 | T13 | Teste de integração: payload de exemplo do desafio → `rejected` (`two_suspicious_axes`) | BAIXA | Natalia | Victoria | T03, T05 | 20 | 04:30 | a fazer |
-| T14 | Regras WHERE de histórico: `WHERE_DESTINATION_FAN_IN` (critical, por fluxo), `WHERE_DESTINATION_REJECTIONS` (critical, fundada suspeita) | BAIXA | Natalia | Ramon | T08 | 45 | 05:15 | fazendo |
+| T14 | Regras WHERE de histórico: `WHERE_DESTINATION_FAN_IN` (critical, por fluxo), `WHERE_DESTINATION_REJECTIONS` (critical, fundada suspeita) | BAIXA | Natalia | Ramon | T08 | 45 | 05:15 | em revisão |
 | T15 | Consultas de janela que montam o `RiskContext` (velocity, soma noturna, soma de device novo, docs por device, fan-in, rejeições no destino, pagadores por IP) | ALTA | Ramon (Chaz) | Victoria | T06, T10 | 75 | 05:20 | a fazer |
 | T16 | Regras HOW/WHO núcleo: `HOW_VELOCITY_EXCEEDED` (por fluxo, suspicious/critical), `WHO_DEVICE_COMPROMISED` (critical) | MÉDIA | Victoria | Ramon | T03 | 50 | 05:30 | a fazer |
 | T17 | README "Como rodar e testar": do clone ao 1º `curl` (com `INTERNAL-TOKEN`), payload do desafio pronto para colar, `pytest`, farm | BAIXA | Natalia | Victoria | T05, T07 | 30 | 05:45 | a fazer |
