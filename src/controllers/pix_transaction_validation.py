@@ -1,3 +1,4 @@
+import ipaddress
 from datetime import datetime, timedelta, timezone
 
 from constants import OWN_PARTICIPANT
@@ -5,6 +6,7 @@ from errors import (
     AccountOpenedAfterTransaction,
     InvalidCnpj,
     InvalidCpf,
+    InvalidIpAddress,
     SourceAndDestinationAccountsAreTheSame,
     TransactionDateInFuture,
 )
@@ -47,8 +49,17 @@ def validate_different_accounts(payload: dict) -> None:
             raise SourceAndDestinationAccountsAreTheSame()
 
 
+def validate_ip_address(payload: dict) -> None:
+    ip_str = payload["source"]["ip"]
+    try:
+        ipaddress.ip_address(ip_str)
+    except ValueError:
+        raise InvalidIpAddress()
+
+
 def validate_payload_semantics(payload: dict) -> None:
     validate_document_numbers(payload)
     validate_opening_dates(payload)
     validate_transaction_date_not_in_future(payload)
     validate_different_accounts(payload)
+    validate_ip_address(payload)

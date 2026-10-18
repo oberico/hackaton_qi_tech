@@ -76,3 +76,14 @@ class SourceAndDestinationAccountsAreTheSame(QIException):
         description = "The source and destination accounts cannot be the same."
         translation = "A conta de origem e a conta de destino não podem ser iguais."
         super().__init__(title, self.code, http_status, description, translation)
+
+
+class InvalidIpAddress(QIException):
+    code = "RNV001043"
+
+    def __init__(self) -> None:
+        title = "Invalid IP Address"
+        http_status = 422
+        description = "The source IP address is not a valid IPv4 or IPv6 address."
+        translation = "O endereço IP de origem não é um endereço IPv4 ou IPv6 válido."
+        super().__init__(title, self.code, http_status, description, translation)
