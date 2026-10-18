@@ -33,14 +33,26 @@ class RiskHistoryRepository:
         since: datetime,
         velocity_since: datetime,
         day_since: datetime,
+        test_since: datetime,
+        test_max_amount: int,
+        test_multiplier: int,
+        amount: int,
         until: datetime,
     ) -> Row:
         approved = AnalysisStatus.enumerator == APPROVED
+        rejected = AnalysisStatus.enumerator == REJECTED
         same_device = PixTransaction.device_id == device_id
         same_beneficiary = PixTransaction.destination_account_id == destination_account_id
+        test_pix = and_(
+            same_beneficiary,
+            PixTransaction.transaction_date >= test_since,
+            PixTransaction.amount_minor <= test_max_amount,
+            PixTransaction.amount_minor * test_multiplier <= amount,
+        )
         return self.session.execute(
             select(
                 func.count().filter(PixTransaction.transaction_date >= velocity_since).label("attempts"),
+                func.count().filter(test_pix).label("test_pix_count"),
                 total_amount(
                     same_device, PixTransaction.transaction_date >= day_since, AnalysisStatus.enumerator.in_(AMOUNT_LIMIT_STATUSES)
                 ).label("device_amount_today"),
@@ -49,6 +61,10 @@ class RiskHistoryRepository:
                 func.min(PixTransaction.transaction_date).filter(approved, same_device).label("device_first_approved_at"),
                 func.count(func.distinct(PixTransaction.device_id)).filter(approved).label("known_devices_count"),
                 func.array_agg(aggregate_order_by(PixTransaction.amount_minor, PixTransaction.transaction_date)).filter(approved).label("approved_amounts"),
+                func.max(PixTransaction.transaction_date).filter(rejected).label("last_rejection_at"),
+                func.array_agg(aggregate_order_by(PixTransaction.amount_minor, PixTransaction.transaction_date.desc()))
+                .filter(rejected)
+                .label("rejected_amounts_latest_first"),
                 func.count().filter(approved, same_beneficiary).label("beneficiary_approved_count"),
                 func.min(PixTransaction.transaction_date).filter(approved, same_beneficiary).label("beneficiary_first_approved_at"),
             )
