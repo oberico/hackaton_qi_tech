@@ -488,3 +488,49 @@ def test_test_pix_border(small_amount_sent, amount, first_approved_minutes_ago, 
     assert rule.axis == "how"
     assert rule.description and rule.translation
     assert (result.decision, result.decision_basis) == (TWO_FACTOR_BY_AXIS if fires else APPROVED)
+
+
+WHO_AGGRAVATING_THRESHOLD = {
+    "min_signals": 2,
+    "ip_distinct_payers_1h": 5,
+}
+
+WHO_AGGRAVATING_BORDERS = {
+    "no_aggravating_signals": (1, False, "app", ["app"], 1, False),
+    "only_ip_private": (1, True, "app", ["app"], 1, False),
+    "only_distinct_payers_five": (5, False, "app", ["app"], 1, False),
+    "only_new_channel_with_history": (1, False, "web", ["app"], 1, False),
+    "four_distinct_payers_with_private_ip_does_not_fire": (4, True, "app", ["app"], 1, False),
+    "five_distinct_payers_with_private_ip_fires": (5, True, "app", ["app"], 1, True),
+    "private_ip_with_new_channel_and_history_fires": (1, True, "web", ["app"], 1, True),
+    "five_distinct_payers_with_new_channel_and_history_fires": (5, False, "web", ["app"], 1, True),
+    "all_three_signals_fire": (5, True, "web", ["app"], 1, True),
+    "new_channel_without_payer_history_does_not_count": (1, True, "web", [], 0, False),
+}
+
+
+@pytest.mark.parametrize(
+    "distinct_payers_1h, ip_is_private, channel, known_channels, approved_count, fires",
+    WHO_AGGRAVATING_BORDERS.values(),
+    ids=WHO_AGGRAVATING_BORDERS.keys(),
+)
+def test_who_aggravating_signals_border(
+    distinct_payers_1h, ip_is_private, channel, known_channels, approved_count, fires
+):
+    context = make_context(
+        transaction={"channel": channel, "ip_is_private": ip_is_private},
+        ip={"distinct_payers_1h": distinct_payers_1h},
+        payer={"known_channels": known_channels, "approved_count": approved_count, "device_trust": DeviceTrust.TRUSTED},
+    )
+
+    result = evaluate(context)
+
+    rule = rule_of(result, "WHO_AGGRAVATING_SIGNALS")
+    expected_outcome = RuleOutcome.FIRED if fires else RuleOutcome.NOT_FIRED
+    expected_level = RiskLevel.SUSPICIOUS if fires else None
+    assert (rule.outcome, rule.level) == (expected_outcome, expected_level)
+    assert rule.axis == "who"
+    assert rule.threshold == WHO_AGGRAVATING_THRESHOLD
+    assert rule.observed["signals_count"] >= (2 if fires else 0)
+    assert rule.description and rule.translation
+    assert (result.decision, result.decision_basis) == (TWO_FACTOR_BY_AXIS if fires else APPROVED)
