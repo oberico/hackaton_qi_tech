@@ -1,6 +1,6 @@
-# [Nome do grupo]
+# Grupo 12 - RNV
 
-**Integrantes:** [nomes]
+**Integrantes:** Ramon Guimarães, Victoria Camile e Natalia Lugão
 
 ## Como o motor de decisão funciona
 
