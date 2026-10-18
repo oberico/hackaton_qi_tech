@@ -75,5 +75,3 @@ payload.json
 __pycache__/
 *.pyc
 
-# --- Coleção local do Insomnia ---
-insomnia/

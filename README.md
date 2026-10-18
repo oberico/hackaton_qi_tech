@@ -446,6 +446,64 @@ python scripts/farm.py
 
 O simulador de personas, que mede as taxas de 2FA e de rejeição por `policy_version`, **ainda não está no repositório**: o `scripts/farm.py` é da tarefa T23. Veja [Limitações conhecidas](#limitações-conhecidas).
 
+### 6. Testes de carga e latência
+
+O script `scripts/load_test.py` mede o throughput e a distribuição de latência (p50, p90, p95, p99) sob concorrência com o motor antifraude e o banco de dados ativos, validando a meta regulatória e de arquitetura (< 100 ms):
+
+```bash
+# Execução padrão (20 requisições, 2 threads, caminho feliz)
+python scripts/load_test.py --requests 20 --concurrency 2
+
+# Cenário de rajada (burst de 10 Pix do mesmo pagador — testa escalada de velocity e SLA)
+python scripts/load_test.py --requests 10 --concurrency 1 --scenario burst
+
+# Cenário misto sob carga concorrente (30 requisições, 3 threads)
+python scripts/load_test.py --requests 30 --concurrency 3 --scenario mixed
+```
+
+Saída real de exemplo:
+
+```
+================================================================
+  MOTOR ANTIFRAUDE PIX — TESTE DE CARGA E LATÊNCIA
+================================================================
+Target:       http://localhost:8001
+Cenário:      happy_path
+Requisições:  20
+Concorrência: 2 threads
+----------------------------------------------------------------
+Tempo total:       0.47 s
+Throughput:        42.4 req/s
+Requisições:       20 (20 sucesso, 0 erros)
+----------------------------------------------------------------
+Latência HTTP de Ponta a Ponta (ms):
+  Mínima:   39.06 ms
+  Média:    47.04 ms (± 13.44 ms)
+  p50:      42.35 ms
+  p90:      54.82 ms
+  p95:      84.83 ms
+  p99:      85.22 ms
+  Máxima:   85.32 ms
+================================================================
+ [PASS] Meta de latência (< 100 ms) ATENDIDA! (p95 = 84.83 ms)
+================================================================
+```
+
+### 7. Coleção do Insomnia
+
+O repositório disponibiliza a coleção completa pronta para importação em `insomnia/antifraud-pix.insomnia.json` (48 requisições estruturadas).
+
+A coleção cobre:
+- **0. Saúde:** `GET /` e `GET /health_check`
+- **1. Payload do desafio:** `POST /pix/transaction` (esperado `rejected`) e `GET /pix/transaction/pix-000123`
+- **2. Idempotência:** POST original, retry idêntico (`200`), conflito de payload com mesmo id (`422 RNV001024`) e GET
+- **3. Erros de formato e token:** 400 granulares (`RNV000001`, `RNV000007`–`RNV000010`), 403 (`RNV000002`) e 404 (`RNV001039`)
+- **4. Erros de sentido:** 422 (`RNV001002`, `RNV001020`, `RNV001040`–`RNV001043`) e 409 (`RNV001044`)
+- **5. Decisões do motor:** 9 cenários ordenados (Approved, Piso regulatório, 2FA por destino novo, ISPB fora do STR, Noturno PF→PF, Noturno PF→PJ, Escalada de Velocity 1 a 6, Fan-in 1 a 3 e Aparelho comprometido 1 a 3)
+- **6. Carga e latência:** Requisições parametrizadas para o Insomnia Runner
+
+Para importar: no Insomnia, clique em **Preferences** (ou engrenagem) → **Data** → **Import Data** → **From File** e selecione `insomnia/antifraud-pix.insomnia.json`.
+
 
 ## Modelo de dados
 
