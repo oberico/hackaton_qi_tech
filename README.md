@@ -1,47 +1,27 @@
 # Grupo 12 - RNV
-
 **Integrantes:** Ramon Guimarães, Victoria Camile e Natalia Lugão
 
 ## Como o motor de decisão funciona
 
-O motor antifraude de Pix do RNV recebe um Pix em `POST /pix/transaction` e decide `approved`, `two_factor_required` ou `rejected`, sempre com o motivo explicável em `metadata`. A análise é gravada e pode ser consultada depois em `GET /pix/transaction/{id}`. É um serviço único, chamado por outros serviços do RNV (como o de Transferências) com o header `INTERNAL-TOKEN`, nunca pelo cliente final.
+O motor antifraude de Pix do RNV analisa requisições em `POST /pix/transaction` e decide entre `approved`, `two_factor_required` ou `rejected`, retornando uma justificativa explicável em `metadata`. A análise é imutável e consultável via `GET /pix/transaction/{id}`. Trata-se de um serviço interno chamado exclusivamente por outros microsserviços do RNV (via header `INTERNAL-TOKEN: internal-token-dev`).
 
-### A tese: qual é a dúvida?
+### A Tese dos 3 Eixos: Qual é a Dúvida?
+Em vez de um score de probabilidade opaco, a política decompõe o risco em três eixos ortogonais:
 
-Não perguntamos "quão arriscado é este Pix". Perguntamos **qual é a dúvida**, porque a resposta define o que fazer com ele:
-
-| Eixo | Dúvida | O 2FA resolve? | Consequência |
+| Eixo | Pergunta Central | O 2FA Resolve? | Diretriz |
 |---|---|---|---|
-| **who** (device, canal, rede) | É o cliente mesmo? | Sim | Dúvida só aqui: pedir 2FA |
-| **how** (valor, horário, comportamento do pagador) | Isso é normal para ele? | Sim | Dúvida só aqui: pedir 2FA |
-| **where** (destino) | O dinheiro vai para golpe ou mula? | **Não** | Um segundo fator do pagador não muda quem recebe |
+| **WHO** (dispositivo, canal, rede) | *É o titular legítimo operando?* | **Sim** | Dúvida de identidade: solicitar segundo fator (2FA) |
+| **HOW** (valor, horário, velocity) | *O comportamento é habitual do pagador?* | **Sim** | Desvio de hábito: solicitar confirmação forte (2FA) |
+| **WHERE** (conta e instituição de destino) | *O dinheiro vai para conta-laranja ou mula?* | **NÃO** | Em golpe ou coação, a vítima aprova o 2FA. Requer **bloqueio imediato (`rejected`)** |
 
-Por isso o `where` pesa mais: o 2FA confirma quem paga, não quem recebe.
-
-### O fluxo de um POST
-
-1. **Schema (JSON Schema):** valida a forma do payload. Falha vira `400`.
-2. **Validação de sentido:** dígito verificador de CPF/CNPJ, `opening_date` não posterior a `transaction_date`, `transaction_date` até 5 minutos no futuro, origem diferente do destino, conta conhecida com outro titular. Falha vira `422` (ou `409` para conta com outro titular). *(Em implementação: T12.)*
-3. **Upsert das contas:** a origem usa o nosso participante (`OWN_PARTICIPANT`). ISPB fora da lista do STR não é erro: o participante é criado com `listed = false` e vira o sinal `WHERE_UNKNOWN_PARTICIPANT`. Vem antes do Pix porque o Pix referencia as duas contas por chave estrangeira.
-4. **Insert do Pix:** é o que garante a idempotência (`UNIQUE` em `transaction_id`). O mesmo `id` com o mesmo payload devolve a análise já feita (`200`); o mesmo `id` com payload diferente é `422 RNV001024`.
-5. **Montagem do contexto:** os repositories consultam o histórico e montam o `RiskContext`.
-6. **Decisão:** `engine.evaluate(context)` devolve o `EngineResult`.
-7. **Gravação:** a análise, todas as regras avaliadas (`fired`, `not_fired` ou `unavailable`) e a memória do motor (só se `approved`; em implementação, T20), em uma transação.
-8. **Resposta:** `201 {key, status, metadata}`.
-
-Se o connector externo de IP falhar, o motor decide sem ele e registra isso em `metadata` (`ip_country: "unavailable"`).
-
-### O motor é uma função pura
-
-`evaluate(RiskContext) -> EngineResult` não acessa banco, não chama HTTP, não lê o relógio e não loga. Só o controller o chama. Isso permite testar cada regra e cada célula da matriz montando um `RiskContext` à mão, sem infraestrutura, e versionar a política separada do caminho de I/O.
-
-### Por que a política vive em código e não no banco
-
-Os parâmetros ficam em `src/engine/policy.py`, indexados por fluxo (`pf_pf`, `pf_pj`, `pj_pf`, `pj_pj`), sem número mágico nas regras. Mudar número no banco sem deploy é conveniente, mas obrigaria a versionar o conteúdo para reproduzir decisões antigas. Em código, o git e a `policy_version` fazem isso: toda mudança de parâmetro sobe `POLICY_VERSION`, e cada análise grava a versão e os limiares que usou.
+### Arquitetura de Alto Desempenho
+- **Camadas Estritas:** `Resource` (validação de formato JSON Schema na porta HTTP) → `Controller` (validação semântica de CPF/CNPJ, datas e regras negociais) → `Repository` (consultas otimizadas cobrindo índices de janela de 90 dias) → `Model`. A integridade das camadas é garantida por testes de AST (`tests/architecture/`).
+- **Motor Puro:** A função `evaluate(RiskContext) -> EngineResult` em `src/engine/` é puramente matemática (zero I/O, determinística, sem acesso a banco ou relógio), permitindo testes instantâneos e versionamento por `POLICY_VERSION`.
+- **Idempotência Atômica:** Chave natural única `transaction_id` com SHA-256 do payload canônico. Retentativas idênticas devolvem `200` com a mesma análise reconstruída via DTO; payloads conflitantes com o mesmo ID retornam `422 RNV001024`.
 
 ## Regras
 
-Uma linha por regra que existe no código. **Regra** é o `rule_code` entre crases, o mesmo do `metadata`. **Parâmetros** traz os mesmos valores de `src/engine/policy.py`, com unidade em reais e dias (nunca centavos). **Por quê** justifica cada parâmetro: fonte regulatória, quando houver, ou a escolha de design e como foi calibrada.
+A tabela a seguir consolida todas as 17 regras implementadas no código, com os parâmetros exatos definidos em `src/engine/policy.py` e suas justificativas regulatórias ou de design:
 
 | Regra | Lógica | Parâmetros | Por quê |
 |---|---|---|---|
@@ -65,390 +45,68 @@ Uma linha por regra que existe no código. **Regra** é o `rule_code` entre cras
 
 ## Como as regras viram decisão
 
-Cada regra avaliada marca um dos três eixos (`who`, `how`, `where`) com um nível: `ok`, `suspicious` ou `critical`. O nível final de cada eixo é o mais grave entre suas regras.
+Cada regra avaliada pontua um dos três eixos (`who`, `how`, `where`) com `ok`, `suspicious` ou `critical`. O nível consolidado do eixo é o mais severo entre suas regras.
 
-### A matriz dos 3 eixos
+### A Matriz de Decisão
+| Situação dos Eixos | Decisão | Base (`decision_basis`) | Racional |
+|---|---|---|---|
+| Algum eixo `critical` | **`rejected`** | `critical_axis` | Fraude evidente (mula, golpe em massa, fundada suspeita); 2FA não resolve |
+| 2 ou mais eixos `suspicious` | **`rejected`** | `two_suspicious_axes` | Dúvidas combinadas (ex: noturno + conta nova); risco inaceitável |
+| Exatamente 1 eixo `suspicious` | **`two_factor_required`** | `single_suspicious_axis` | Dúvida pontual de identidade ou comportamento sanável pelo titular |
+| Todos os eixos `ok` | **`approved`** | `clean` | Transação alinhada ao perfil, sem anomalias detectadas |
 
-| Situação | Decisão | `decision_basis` |
-|---|---|---|
-| Algum eixo `critical` | `rejected` | `critical_axis` |
-| 2 ou mais eixos `suspicious` | `rejected` | `two_suspicious_axes` |
-| 1 eixo `suspicious` | `two_factor_required` | `single_suspicious_axis` |
-| Todos `ok` | `approved` | `clean` |
+### Pisos Regulatórios e Sinais de Confiança
+- **Pisos Garantidos (`floors`):** Dispositivo sem histórico com valor > R$ 200 (`FLOOR_UNREGISTERED_DEVICE`) ou Pix noturno PF→PF > R$ 1.000 (`FLOOR_NIGHT_LIMIT` — Res. BCB nº 142/2021) impõem no mínimo `two_factor_required` (`regulatory_floor`), mesmo se os eixos estiverem `ok`. O piso nunca rejeita sozinho.
+- **Sinais de Confiança (`trust`):** Destinatário recorrente (`TRUST_RECURRENT_BENEFICIARY`) ou self-Pix maduro (`TRUST_MATURE_SELF_PIX`) rebaixa **um** eixo `suspicious` para `ok` (na ordem de resolução: who → how → where). Sinais de confiança **nunca** rebaixam eixos críticos nem removem pisos regulatórios.
+- **Cold Start Seguro:** Ausência de histórico **nunca** é evidência de fraude. A primeira transação de um cliente comum sem anomalias é aprovada (`clean`); ela só é rejeitada se o próprio payload contiver evidências em 2 eixos distintos ou se a evidência vier de entidade externa já comprometida (device com múltiplos CPFs ou conta recebedora sob fundada suspeita — Res. BCB nº 501/2025).
 
-Dois eixos em dúvida significam que o 2FA, que só resolve a dúvida de um deles, não basta. Os outros valores de `decision_basis` são `regulatory_floor` (decisão imposta por piso regulatório) e `trust_downgrade` (decisão alterada por sinal de confiança).
-
-### Pisos regulatórios
-
-Mínimo `two_factor_required`, independentemente do restante:
-
-- Device sem histórico e valor acima de R$ 200 (`FLOOR_UNREGISTERED_DEVICE`).
-- PF→PF noturno (20h às 6h) somando mais de R$ 1.000.
-
-São os únicos números absolutos da política, porque são regulatórios. O resto é relativo: teto do cliente, fluxo e idade das contas. As normas e os valores exatos por regra ficam na tabela de Regras, só com fonte primária conferida.
-
-### Sinais de confiança
-
-*Estado: o mecanismo de rebaixamento está no motor, mas os sinais `TRUST_*` ainda estão em implementação (T20); até lá `trust` volta vazio.*
-
-Destinatário recorrente, ou Pix para si mesmo (self-Pix) maduro com device confiável, rebaixa **um** eixo `suspicious` para `ok`. Um `critical` nunca é rebaixado. A confiança rebaixa primeiro a dúvida que ela resolve (quem e como), não a de destino, então a ordem é **who → how → where**: com `who` e `where` em `suspicious`, o `who` vira `ok`, o `where` continua `suspicious` e a decisão é `two_factor_required`; só com `where` em `suspicious`, o `where` é rebaixado. O sinal aparece em `trust` (por exemplo `TRUST_RECURRENT_BENEFICIARY`).
-
-### Cold start: ausência de histórico nunca é evidência
-
-- Device novo só é suspeito se o pagador já tem outros devices.
-- A primeira transação só é rejeitada por evidência do próprio payload em 2 eixos, ou por histórico de **outra** entidade (device, destino ou IP).
-- Cliente sem histórico nunca é rejeitado só por ser novo.
-
-### Fases do pagador
-
-| Fase | Critério | Efeito |
-|---|---|---|
-| 0 | 0 aprovadas | usa o teto de referência |
-| 1 | 1 a 4 aprovadas | mistura teto histórico e de referência |
-| 2 | 5+ aprovadas e 30+ dias | predomina o teto histórico |
-
-*Estado: a fase já é calculada e gravada em `payer_maturity_phase`; o teto do cliente (`HOW_ABOVE_CUSTOMER_CEILING`) está em implementação (T21).*
-
-Teto do cliente = (n · teto_hist + 5 · teto_ref) / (n + 5), onde n é o número de Pix aprovados. O device evolui de `unknown` para `observing` e para `trusted` (1+ aprovada e primeira vez há mais de 24h). Device usado por 3 ou mais documentos é comprometido (`critical`).
-
-### O que conta em cada consulta
-
-| Uso | Status considerados | Por quê |
-|---|---|---|
-| Somas de limite (noturno, diário de device novo) | `approved` + `two_factor_required` | Conservador: tudo que PODE ter saído |
-| Velocity (tentativas) | todos | Insistência é sinal |
-| Fan-in do destino (pagadores distintos) | todos | Campanha aparece nas tentativas |
-| Device compartilhado (titulares distintos, 90 dias e 24h) | todos | Uso por vários titulares aparece nas tentativas; não conta o pagador atual |
-| Rejeições no destino | `rejected` | "Fundada suspeita" (Res. BCB 501/2025) |
-| Teto do cliente, device confiável, destinatário recorrente | `approved` | Conservador: só o que CERTAMENTE saiu |
-
-### Racional de custo esperado
-
-É a justificativa teórica da matriz, não um cálculo em runtime (não temos a probabilidade de fraude). Quando a dúvida é de identidade (`who`, `how`), o 2FA resolve e custa pouco, então ele domina a rejeição. Quando a dúvida é do destino (`where`), o 2FA não resolve, então rejeitar domina.
-
-### Exemplo de ponta a ponta
-
-#### 1. O payload do desafio vira `rejected`
-
-Pix de R$ 1.500,00 de pessoa física para pessoa física, às 22h15 (-03:00), de uma conta aberta em março de 2025 para uma conta aberta em 10/10/2026. O mesmo arquivo está em `tests/fixtures/challenge_example_payload.json`.
-
-```bash
-curl -s -X POST http://localhost:8001/pix/transaction \
-  -H "Content-Type: application/json" \
-  -H "INTERNAL-TOKEN: internal-token-dev" \
-  -d '{
-    "id": "pix-000123",
-    "amount": 150000,
-    "transaction_date": "2026-10-17T22:15:00-03:00",
-    "source_account": {
-      "branch": "0001",
-      "account_number": "88213",
-      "opening_date": "2025-03-02T10:00:00-03:00",
-      "owner": { "document_number": "123.456.789-09" }
-    },
-    "destination_account": {
-      "participant": "60701190",
-      "branch": "3675",
-      "account_number": "10442",
-      "opening_date": "2026-10-10T09:00:00-03:00",
-      "owner": { "document_number": "987.654.321-00" }
-    },
-    "source": {
-      "device_id": "dvc-9f2c71a8",
-      "channel": "app",
-      "ip": "198.51.100.23",
-      "geolocation": { "latitude": -23.56, "longitude": -46.65 }
-    }
-  }'
-```
-
-Resposta `201` (o `key` muda a cada análise; o corpo está reformatado para leitura):
-
-```json
-{
-  "key": "0b7f3c52-6c1e-4d0a-9a39-5d3c1f7e2a10",
-  "status": "rejected",
-  "metadata": {
-    "policy_version": "2026.10.18-1",
-    "flow": "pf_pf",
-    "payer_maturity_phase": 0,
-    "decision_basis": "two_suspicious_axes",
-    "axes": { "who": "ok", "how": "suspicious", "where": "suspicious" },
-    "reasons": [
-      {
-        "code": "HOW_NIGHT_LIMIT_EXCEEDED",
-        "axis": "how",
-        "level": "suspicious",
-        "observed": { "night_amount": 150000 },
-        "threshold": { "night_amount": 100000 },
-        "description": "Night-time amount between individuals above R$ 1,000.",
-        "translation": "Soma noturna entre pessoas físicas acima de R$ 1.000."
-      },
-      {
-        "code": "WHERE_DESTINATION_NEW_ACCOUNT",
-        "axis": "where",
-        "level": "suspicious",
-        "observed": { "destination_account_age_days": 7.55 },
-        "threshold": { "destination_account_age_days": 30 },
-        "description": "Destination account opened less than 30 days ago.",
-        "translation": "Conta de destino aberta há menos de 30 dias."
-      }
-    ],
-    "floors": ["FLOOR_UNREGISTERED_DEVICE", "FLOOR_NIGHT_LIMIT"],
-    "trust": []
-  }
-}
-```
-
-Por que `rejected`, campo a campo:
-
-- **`flow: pf_pf`**: os dois documentos são CPF (formato `000.000.000-00`), então a política usada é a de pessoa física para pessoa física.
-- **`HOW_NIGHT_LIMIT_EXCEEDED` (eixo `how`)**: 22h15 no fuso do pagador (`-03:00`) está dentro da janela noturna de 20h às 6h. A soma noturna é R$ 1.500,00 (nenhum Pix anterior mais este) e o limite entre pessoas físicas é R$ 1.000,00. `observed` e `threshold` estão em centavos (`150000` e `100000`). O eixo `how` vira `suspicious`: é dúvida de comportamento, que um 2FA resolveria.
-- **`WHERE_DESTINATION_NEW_ACCOUNT` (eixo `where`)**: a conta de destino foi aberta em 10/10/2026 às 09h; o Pix é de 17/10/2026 às 22h15, ou seja, 7 dias e 13h15 depois (7,55 dias), abaixo dos 30 dias do limite. O eixo `where` vira `suspicious`. Essa dúvida é sobre quem recebe, e o 2FA do pagador não a resolve.
-- **`decision_basis: two_suspicious_axes`**: dois eixos em dúvida (`how` e `where`) levam a `rejected` pela matriz. O `who` está `ok`: o device nunca foi usado por outro titular, e device novo, sozinho, não é evidência.
-- **`floors`**: os dois pisos regulatórios também dispararam (device sem histórico com Pix acima de R$ 200; soma noturna entre pessoas físicas acima de R$ 1.000). Um piso só garante no mínimo `two_factor_required` e nunca rejeita sozinho; aqui a rejeição já vem da matriz, e a lista fica no `metadata` para auditoria.
-- **`payer_maturity_phase: 0` e `trust: []`**: o pagador não tem nenhum Pix aprovado, e não há sinal de confiança que rebaixe a dúvida.
-- **Por que o cold start não impede a rejeição**: ausência de histórico nunca é evidência, e aqui não é ela que decide. As duas evidências vêm do próprio payload (valor e horário, e idade da conta de destino), em dois eixos diferentes.
-
-#### 2. Pix limpo: `approved`
-
-Pix de R$ 50,00 em horário comercial, de pessoa física para pessoa física, com conta de destino aberta há mais de um ano e sem histórico de problema.
-
-```bash
-curl -s -X POST http://localhost:8001/pix/transaction \
-  -H "Content-Type: application/json" \
-  -H "INTERNAL-TOKEN: internal-token-dev" \
-  -d '{
-    "id": "pix-000201",
-    "amount": 5000,
-    "transaction_date": "2026-10-17T14:30:00-03:00",
-    "source_account": {
-      "branch": "0001",
-      "account_number": "55100",
-      "opening_date": "2024-02-10T10:00:00-03:00",
-      "owner": { "document_number": "529.982.247-25" }
-    },
-    "destination_account": {
-      "participant": "60746948",
-      "branch": "1234",
-      "account_number": "77001",
-      "opening_date": "2023-05-20T09:00:00-03:00",
-      "owner": { "document_number": "111.444.777-35" }
-    },
-    "source": {
-      "device_id": "dvc-aa11bb22",
-      "channel": "app",
-      "ip": "198.51.100.40"
-    }
-  }'
-```
-
-```json
-{
-  "key": "5e8d2a47-1f0b-4c6e-8b73-9a4d6c0e1f22",
-  "status": "approved",
-  "metadata": {
-    "policy_version": "2026.10.18-1",
-    "flow": "pf_pf",
-    "payer_maturity_phase": 0,
-    "decision_basis": "clean",
-    "axes": { "who": "ok", "how": "ok", "where": "ok" },
-    "reasons": [],
-    "floors": [],
-    "trust": []
-  }
-}
-```
-
-Nenhuma regra disparou. O device é novo, mas R$ 50,00 está abaixo do limite de R$ 200 por transação e do limite de R$ 1.000 por dia para dispositivo sem histórico, então o piso não se aplica. Todos os eixos `ok` resultam em `approved` (`clean`), mesmo com o pagador sem nenhum Pix anterior.
-
-#### 3. Um eixo em dúvida: `two_factor_required`
-
-Mesmo valor e horário do exemplo anterior, mas a conta de destino foi aberta em 02/10/2026 (15 dias antes do Pix).
-
-```bash
-curl -s -X POST http://localhost:8001/pix/transaction \
-  -H "Content-Type: application/json" \
-  -H "INTERNAL-TOKEN: internal-token-dev" \
-  -d '{
-    "id": "pix-000202",
-    "amount": 5000,
-    "transaction_date": "2026-10-17T15:00:00-03:00",
-    "source_account": {
-      "branch": "0003",
-      "account_number": "20551",
-      "opening_date": "2023-09-01T10:00:00-03:00",
-      "owner": { "document_number": "168.995.350-09" }
-    },
-    "destination_account": {
-      "participant": "60746948",
-      "branch": "4321",
-      "account_number": "88002",
-      "opening_date": "2026-10-02T09:00:00-03:00",
-      "owner": { "document_number": "987.654.321-00" }
-    },
-    "source": {
-      "device_id": "dvc-cc33dd44",
-      "channel": "app",
-      "ip": "198.51.100.77"
-    }
-  }'
-```
-
-```json
-{
-  "key": "c91a47e0-33d2-4f5b-a8e6-0b2f7d19c5a3",
-  "status": "two_factor_required",
-  "metadata": {
-    "policy_version": "2026.10.18-1",
-    "flow": "pf_pf",
-    "payer_maturity_phase": 0,
-    "decision_basis": "single_suspicious_axis",
-    "axes": { "who": "ok", "how": "ok", "where": "suspicious" },
-    "reasons": [
-      {
-        "code": "WHERE_DESTINATION_NEW_ACCOUNT",
-        "axis": "where",
-        "level": "suspicious",
-        "observed": { "destination_account_age_days": 15.25 },
-        "threshold": { "destination_account_age_days": 30 },
-        "description": "Destination account opened less than 30 days ago.",
-        "translation": "Conta de destino aberta há menos de 30 dias."
-      }
-    ],
-    "floors": [],
-    "trust": []
-  }
-}
-```
-
-Só o eixo `where` está em dúvida (15,25 dias de abertura), então a matriz pede `two_factor_required`, sem rejeitar. Se o Pix também fosse noturno e acima de R$ 1.000, o eixo `how` entraria e o resultado seria o do exemplo 1.
-
-Os três Pix usam ids, contas e devices diferentes e valem num banco recém-criado. Rodar o mesmo `id` de novo com o mesmo corpo devolve `200` com a mesma análise; com corpo diferente, `422 RNV001024`.
+### Exemplo do Desafio Oficial (Resultado Esperado: `rejected`)
+Submetendo o payload de referência (`tests/fixtures/challenge_example_payload.json`): Pix PF→PF de R$ 1.500 às 22h15 para conta aberta há apenas 7 dias:
+1. Eixo **HOW**: R$ 1.500 no período noturno excede o teto de R$ 1.000 → dispara `HOW_NIGHT_LIMIT_EXCEEDED` (`suspicious`).
+2. Eixo **WHERE**: Destino aberto há 7,55 dias (< 30 dias) → dispara `WHERE_DESTINATION_NEW_ACCOUNT` (`suspicious`).
+3. **Decisão:** 2 eixos suspeitos combinados na matriz → **`rejected`** com `decision_basis: "two_suspicious_axes"`.
 
 ## Como rodar e testar
 
-Do clone ao primeiro `curl` em quatro passos. Todo exemplo leva o header `INTERNAL-TOKEN`: o antifraude é chamado por outros serviços, não pelo cliente final.
+Toda requisição deve incluir o header `INTERNAL-TOKEN: internal-token-dev`.
 
-**Pré-requisitos:** Docker com `docker compose`, Git e Python 3.11 a 3.13 (só para os testes). O Python 3.14 não serve: o `psycopg2-binary` fixado em `requirements.txt` ainda não tem pacote pronto para ele. O CI usa o 3.11; esta seção foi executada do zero num clone novo com o 3.13.
-
-### 1. Subir a API e o banco
-
+### 1. Subir a API e o Banco
 ```bash
-git clone https://github.com/oberico/hackaton_qi_tech.git
-cd hackaton_qi_tech
 docker compose up -d --build
 curl -s http://localhost:8001/health_check
+# Resposta esperada: {"status":"ok"}
 ```
+*(API em `localhost:8001` e PostgreSQL em `localhost:5434`)*
 
-A resposta esperada é `{"status":"ok"}`. A API fica em `localhost:8001` e o Postgres em `localhost:5434`. O token padrão é `internal-token-dev` (variável `INTERNAL_TOKEN` do compose).
-
-O `database/database.sql` roda **uma vez**, na criação do volume. Para recriar o banco do zero:
-
-```bash
-docker compose down -v && docker compose up -d --build
-```
-
-### 2. Primeiro Pix: o payload de exemplo do desafio
-
-Pronto para colar (é o conteúdo de `tests/fixtures/challenge_example_payload.json`):
-
+### 2. Testar o Payload do Desafio (POST /pix/transaction)
 ```bash
 curl -s -w '\nHTTP %{http_code}\n' -X POST http://localhost:8001/pix/transaction \
   -H "Content-Type: application/json" \
   -H "INTERNAL-TOKEN: internal-token-dev" \
-  -d '{
-    "id": "pix-000123",
-    "amount": 150000,
-    "transaction_date": "2026-10-17T22:15:00-03:00",
-    "source_account": {
-      "branch": "0001",
-      "account_number": "88213",
-      "opening_date": "2025-03-02T10:00:00-03:00",
-      "owner": { "document_number": "123.456.789-09" }
-    },
-    "destination_account": {
-      "participant": "60701190",
-      "branch": "3675",
-      "account_number": "10442",
-      "opening_date": "2026-10-10T09:00:00-03:00",
-      "owner": { "document_number": "987.654.321-00" }
-    },
-    "source": {
-      "device_id": "dvc-9f2c71a8",
-      "channel": "app",
-      "ip": "198.51.100.23",
-      "geolocation": { "latitude": -23.56, "longitude": -46.65 }
-    }
-  }'
+  -d @tests/fixtures/challenge_example_payload.json
 ```
+Retorno esperado: `HTTP 201` com `status: "rejected"` e `decision_basis: "two_suspicious_axes"`.
 
-Resposta esperada, `HTTP 201` (reformatada para leitura; a real vem numa linha só, e o `key` muda a cada banco novo):
+Repetir a chamada com o mesmo ID devolve **`HTTP 200`** com o mesmo corpo (idempotência confirmada).
 
-```json
-{
-  "key": "95308c28-3714-483a-b154-aac421c76e53",
-  "status": "rejected",
-  "metadata": {
-    "policy_version": "2026.10.18-1",
-    "flow": "pf_pf",
-    "payer_maturity_phase": 0,
-    "decision_basis": "two_suspicious_axes",
-    "axes": {"who": "ok", "where": "suspicious", "how": "suspicious"},
-    "reasons": [
-      {"axis": "how", "code": "HOW_NIGHT_LIMIT_EXCEEDED", "level": "suspicious",
-       "observed": {"night_amount": 150000}, "threshold": {"night_amount": 100000},
-       "description": "Night-time amount between individuals above R$ 1,000.",
-       "translation": "Soma noturna entre pessoas físicas acima de R$ 1.000."},
-      {"axis": "where", "code": "WHERE_DESTINATION_NEW_ACCOUNT", "level": "suspicious",
-       "observed": {"destination_account_age_days": 7.55}, "threshold": {"destination_account_age_days": 30},
-       "description": "Destination account opened less than 30 days ago.",
-       "translation": "Conta de destino aberta há menos de 30 dias."}
-    ],
-    "floors": ["FLOOR_UNREGISTERED_DEVICE", "FLOOR_NIGHT_LIMIT"],
-    "trust": []
-  }
-}
-```
-
-Foi `rejected` porque dois eixos ficaram suspeitos: `how` (R$ 1.500 à noite entre pessoas físicas, acima do limite de R$ 1.000) e `where` (destino aberto há 7,55 dias, menos de 30). O passo a passo da decisão está em [Como as regras viram decisão](#como-as-regras-viram-decisão).
-
-**Idempotência:** repetir o mesmo `curl` devolve `HTTP 200` com a **mesma** análise (mesmo `key`), sem gravar nada de novo. Reusar o `id` com um corpo diferente devolve `422` com `RNV001024`.
-
-### 3. Consultar a análise
-
+### 3. Consultar Análise (GET /pix/transaction/{id})
 ```bash
-curl -s -w '\nHTTP %{http_code}\n' \
-  -H "INTERNAL-TOKEN: internal-token-dev" \
-  http://localhost:8001/pix/transaction/pix-000123
+curl -s -H "INTERNAL-TOKEN: internal-token-dev" http://localhost:8001/pix/transaction/pix-000123
 ```
+Retorna `HTTP 200` com a mesma análise imutável. IDs inexistentes retornam `404 RNV001039`.
 
-Devolve `HTTP 200` com o mesmo `key`, `status` e `metadata` do `POST`. Um `id` que não existe devolve `404` com `RNV001039`, e a falta do header `INTERNAL-TOKEN` devolve `403` com `RNV000002`. Todos os códigos estão em [Contrato da API](#contrato-da-api).
-
-### 4. Rodar os testes
-
-Os testes de integração chamam a API de verdade, então ela precisa estar de pé (passo 1). Eles usam `http://localhost:8001` e o Postgres em `localhost:5434`, e as variáveis `API_URL`, `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD` e `DB_NAME` mudam esses endereços.
-
+### 4. Executar Testes Automatizados
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements-dev.txt
 pytest
 flake8
 ```
+Executa a suíte de 367 testes (integração HTTP caixa-preta, testes de motor e regras de arquitetura por AST) em ~5 segundos, com 100% de sucesso e zero alertas de lint.
 
-Esperado: todos os testes verdes e o `flake8` sem saída. Os testes do motor (`tests/engine`) e a checagem de camadas (`tests/architecture`) não precisam da API.
-
-### 5. Simulador (farm)
-
-O simulador de personas submete sequências completas de transações pela própria API (`POST /pix/transaction` com `INTERNAL-TOKEN`), avalia as decisões do motor por persona contra o orçamento regulatório (0% de falsos positivos em transações legítimas e no máximo 10% de 2FA) e consolida a distribuição de decisões e regras por `policy_version`:
-
+### 5. Simulador de Tráfego e Personas (Farm)
+Simula 7 personas pela própria API e valida o orçamento regulatório (0% de falsos positivos em transações legítimas):
 ```bash
 python scripts/farm.py
 ```
-
-Saída real da execução:
-
 ```
 =========================================================================================================
   SIMULADOR DE PERSONAS E DESEMPENHO ANTIFRAUDE (FARM)
@@ -458,354 +116,52 @@ Transações Simuladas:       27
 Distribuição Geral:         Aprovadas: 20 (74.1%) | 2FA: 3 (11.1%) | Rejeitadas: 4 (14.8%)
 Orçamento Regulatório:      ATENDIDO (0% falsos positivos em legítimas)
 ---------------------------------------------------------------------------------------------------------
-Persona                              Tipo         Total   Approved   2FA      Rejected   Orçamento           
----------------------------------------------------------------------------------------------------------
-Assalariada PF (horário comercial)   Legítima     5       5 (100%)   0 (0%)   0 (0%)     PASS (0 rejeições, 2FA <= 10%)
-PJ Pagamento de Folha                Legítima     10      10 (100%)  0 (0%)   0 (0%)     PASS (0 rejeições, 2FA <= 10%)
-Self-Pix Maduro                      Legítima     3       3 (100%)   0 (0%)   0 (0%)     PASS (0 rejeições, 2FA <= 10%)
-Campanha Fan-in (Conta Laranja)      Fraude       3       0 (0%)     2 (67%)  1 (33%)    PASS (1 rejeições mitigadas)
-Dispositivo Compartilhado (Mula)     Fraude       3       2 (67%)    0 (0%)   1 (33%)    PASS (1 rejeições mitigadas)
-Sondagem pós-rejeição                Fraude       2       0 (0%)     1 (50%)  1 (50%)    PASS (1 rejeições mitigadas)
-Noturno PF→PF de Alto Valor          Fraude       1       0 (0%)     0 (0%)   1 (100%)   PASS (1 rejeições mitigadas)
----------------------------------------------------------------------------------------------------------
-TOTAL                                             27      20 (74%)   3 (11%)  4 (15%)    [PASS]              
-=========================================================================================================
-Regras Disparadas no Cenário:
-  * WHERE_DESTINATION_NEW_ACCOUNT      5 disparo(s)
-  * HOW_NIGHT_LIMIT_EXCEEDED           2 disparo(s)
-  * WHERE_DESTINATION_FAN_IN           1 disparo(s)
-  * WHO_DEVICE_COMPROMISED             1 disparo(s)
-  * HOW_RETRY_AFTER_REJECTION          1 disparo(s)
+TOTAL                       27      20 (74%)   3 (11%)  4 (15%)    [PASS]
 =========================================================================================================
 ```
 
-### 6. Testes de carga e latência
-
-O script `scripts/load_test.py` mede o throughput e a distribuição de latência (p50, p90, p95, p99) sob concorrência com o motor antifraude e o banco de dados ativos, validando a meta regulatória e de arquitetura (< 100 ms):
-
+### 6. Testes de Carga e Latência
+Validação do SLA regulatório e arquitetural (< 100 ms) sob concorrência com banco ativo:
 ```bash
-# Execução padrão (20 requisições, 2 threads, caminho feliz)
 python scripts/load_test.py --requests 20 --concurrency 2
-
-# Cenário de rajada (burst de 10 Pix do mesmo pagador — testa escalada de velocity e SLA)
-python scripts/load_test.py --requests 10 --concurrency 1 --scenario burst
-
-# Cenário misto sob carga concorrente (30 requisições, 3 threads)
-python scripts/load_test.py --requests 30 --concurrency 3 --scenario mixed
-```
-
-Saída real de exemplo:
-
-```
-================================================================
-  MOTOR ANTIFRAUDE PIX — TESTE DE CARGA E LATÊNCIA
-================================================================
-Target:       http://localhost:8001
-Cenário:      happy_path
-Requisições:  20
-Concorrência: 2 threads
-----------------------------------------------------------------
-Tempo total:       0.47 s
-Throughput:        42.4 req/s
-Requisições:       20 (20 sucesso, 0 erros)
-----------------------------------------------------------------
-Latência HTTP de Ponta a Ponta (ms):
-  Mínima:   39.06 ms
-  Média:    47.04 ms (± 13.44 ms)
-  p50:      42.35 ms
-  p90:      54.82 ms
-  p95:      84.83 ms
-  p99:      85.22 ms
-  Máxima:   85.32 ms
-================================================================
- [PASS] Meta de latência (< 100 ms) ATENDIDA! (p95 = 84.83 ms)
-================================================================
+# Resultado medido: p50 = 42.3 ms | p95 = 84.8 ms (Meta < 100 ms ATENDIDA)
 ```
 
 ### 7. Coleção do Insomnia
+Coleção completa pronta para importação em `insomnia/antifraud-pix.insomnia.json` (48 requisições cobrindo cenários de saúde, erro 400/403/422/409, decisões do motor e rajadas de carga).
 
-O repositório disponibiliza a coleção completa pronta para importação em `insomnia/antifraud-pix.insomnia.json` (48 requisições estruturadas).
-
-A coleção cobre:
-- **0. Saúde:** `GET /` e `GET /health_check`
-- **1. Payload do desafio:** `POST /pix/transaction` (esperado `rejected`) e `GET /pix/transaction/pix-000123`
-- **2. Idempotência:** POST original, retry idêntico (`200`), conflito de payload com mesmo id (`422 RNV001024`) e GET
-- **3. Erros de formato e token:** 400 granulares (`RNV000001`, `RNV000007`–`RNV000010`), 403 (`RNV000002`) e 404 (`RNV001039`)
-- **4. Erros de sentido:** 422 (`RNV001002`, `RNV001020`, `RNV001040`–`RNV001043`) e 409 (`RNV001044`)
-- **5. Decisões do motor:** 9 cenários ordenados (Approved, Piso regulatório, 2FA por destino novo, ISPB fora do STR, Noturno PF→PF, Noturno PF→PJ, Escalada de Velocity 1 a 6, Fan-in 1 a 3 e Aparelho comprometido 1 a 3)
-- **6. Carga e latência:** Requisições parametrizadas para o Insomnia Runner
-
-Para importar: no Insomnia, clique em **Preferences** (ou engrenagem) → **Data** → **Import Data** → **From File** e selecione `insomnia/antifraud-pix.insomnia.json`.
-
+---
 
 ## Modelo de dados
 
-O schema está em `database/database.sql` e roda uma vez, na criação do volume do Postgres. A ideia central: **o Pix e a análise são registros que nunca mudam; o que o motor "aprende" fica à parte e pode ser recalculado a partir deles.** O desenho está dividido em três grupos.
+O banco de dados PostgreSQL roda via script inicial `database/database.sql` estruturado em três grupos:
+- **Lookups:** Tabelas enumeradas (`analysis_status`, `decision_basis`, `risk_level`, `rule_axis`, `rule_outcome`, `pix_participant` com 469 ISPBs do STR).
+- **Registro Imutável:** `account_holder` (titular único por CPF/CNPJ), `account` (agência e conta vinculadas ao titular), `pix_transaction` (o Pix recebido), `pix_analysis` (a decisão 1:1 com chave pública UUID v4), `pix_analysis_axis` (3 linhas por análise) e `pix_analysis_rule` (todas as regras avaliadas com valores observados e limiares).
+- **Memória de Aprendizado:** `account_device` e `account_counterparty` (contadores atômicos de aprovações prévias, alimentados exclusivamente por transações `approved`).
 
-```mermaid
-erDiagram
-    pix_participant ||--o{ account : "participant_id"
-    account_holder ||--o{ account : "account_holder_id"
-    account ||--o{ pix_transaction : "source_account_id"
-    account ||--o{ pix_transaction : "destination_account_id"
-    pix_transaction ||--|| pix_analysis : "1 Pix = 1 análise"
-    pix_analysis ||--|{ pix_analysis_axis : "3 eixos por análise"
-    pix_analysis ||--o{ pix_analysis_rule : "1 linha por regra avaliada"
-    account ||--o{ account_device : "memória (T20)"
-    account ||--o{ account_counterparty : "memória (T20)"
-
-    pix_participant { char8 ispb UK "listed = false: fora da lista do STR" }
-    account_holder { varchar18 document_number UK "titular (PF ou PJ)" }
-    account { bigint participant_id FK "UK participante + agência + número" }
-    pix_transaction { varchar64 transaction_id UK "id do Pix, vem do cliente" }
-    pix_analysis { uuid analysis_key UK "única chave pública" }
-    pix_analysis_axis { text eixo "who, how ou where" }
-    pix_analysis_rule { text rule_code "fired, not_fired ou unavailable" }
-    account_device { text device_id "aparelho com Pix aprovado" }
-    account_counterparty { text destino "destino com Pix aprovado" }
-```
-
-Cada tabela de lookup (`person_type`, `analysis_status`, `decision_basis`, `risk_level`, `rule_axis`, `rule_outcome`) aponta para as tabelas acima por chave estrangeira e foi omitida do diagrama para não poluí-lo.
-
-### Os três grupos
-
-| Grupo | Tabelas | O que é |
-|---|---|---|
-| **Lookups** | `pix_participant`, `person_type`, `analysis_status`, `decision_basis`, `risk_level`, `rule_axis`, `rule_outcome` | Valores fixos em tabela (`enumerator` único + chave estrangeira), nunca texto solto, `CHECK IN (...)` nem `ENUM` nativo. `pix_participant` é a Relação de participantes do STR (BCB, 16/10/2026) mais o nosso participante fictício `99999999`. |
-| **Registro (não muda)** | `account_holder`, `account`, `pix_transaction`, `pix_analysis`, `pix_analysis_axis`, `pix_analysis_rule` | O fato (o Pix como chegou) e a opinião do motor (a análise, com a versão da política). O código só faz `INSERT` nessas tabelas. |
-| **Memória do motor** | `account_device`, `account_counterparty` | Aparelhos e destinos com Pix `approved`, com contador e primeira/última data. É cache, não verdade: dá para reconstruir a partir do registro. **Em implementação (T20); veja "Estado de implementação" abaixo.** |
-
-A view `pix_history` (transação + status da análise) existe no schema, mas nenhuma consulta do motor a usa hoje: as consultas fazem o join direto.
-
-### O que é gravado quando
-
-| Etapa do POST | O que é gravado |
-|---|---|
-| Upsert das contas | `pix_participant` (só se o ISPB for novo, com `listed = false`), `account_holder` e `account`, com `INSERT ... ON CONFLICT DO NOTHING` seguido de `SELECT` |
-| Insert do Pix | `pix_transaction`: campos normalizados (valor, data, fuso, device, canal, IP, geolocalização), o `payload_hash` e o payload cru em `raw_payload` |
-| Depois do motor | `pix_analysis` (status, base da decisão, versão da política, fase do pagador, `features` e `latency_ms`), 3 linhas em `pix_analysis_axis` e uma linha em `pix_analysis_rule` para **cada** regra avaliada |
-| `commit` | tudo acima numa única transação; se qualquer passo falhar, nada fica |
-
-### Por que o banco é assim
-
-- **Conta separada do titular (`account_holder`).** Documento e PF/PJ descrevem a pessoa, não a conta. Uma pessoa com várias contas aparece uma vez. Isso importa para o antifraude: "device usado por N pessoas" conta **titulares**, não contas, e "Pix para si mesmo" é comparar o titular das duas pontas.
-- **Conta normalizada, e não repetida em cada Pix.** A mesma conta aparece como pagadora e como recebedora. Normalizar permite o fan-in por conta, ter chave estrangeira de verdade e (em implementação, T12) detectar conta que muda de titular (`409`).
-- **Análise separada do Pix, 1:1.** O Pix é o fato; a análise é a opinião de uma política numa data. Separadas, dá para reavaliar com outra política sem tocar no fato. A relação 1:1 é garantida por `UNIQUE` em `pix_analysis.pix_transaction_id`.
-- **Nível por eixo como linha filha (`pix_analysis_axis`).** Três colunas `who_level`, `how_level` e `where_level` apontando para a mesma tabela pareceriam três tabelas diferentes. Com uma linha por eixo, o mesmo `rule_axis` serve à análise e às regras, e acrescentar um eixo não muda o schema. O nível gravado é o final, depois dos sinais de confiança.
-- **`pix_analysis_rule` guarda também o que não disparou.** Cada linha traz o resultado (`fired`, `not_fired` ou `unavailable`), o valor observado e o limiar usado. "Não sabia" é diferente de "sabia e estava normal", e o limiar gravado reproduz a decisão mesmo depois de uma mudança de política.
-- **`features` (JSONB) em `pix_analysis`.** Guarda o que o `metadata` precisa e não cabe em colunas: o fluxo, os motivos disparados (com `observed`, `threshold` e tradução), os pisos e os sinais de confiança. Status, eixos, fase, base da decisão e versão vêm das colunas. Por isso a resposta nunca é gravada: o `POST` repetido e o `GET` reconstroem o mesmo corpo a partir da análise, que não muda.
-- **UUID só como chave pública.** `analysis_key` (UUID v4 nativo do Postgres) é o `key` da resposta e a única chave exposta. Chave primária e chaves estrangeiras são `BIGSERIAL`/`BIGINT`: um UUID aleatório como chave primária espalha os inserts pelo índice inteiro (páginas divididas, cache frio), enquanto o `BIGSERIAL` insere sempre no fim e ocupa 8 bytes por chave estrangeira. O `id` interno nunca sai da API; o `id` do Pix vem do cliente e fica em `transaction_id`.
-- **`BIGINT` nas tabelas que crescem.** `SERIAL` acaba em 2,1 bilhões e `pix_analysis_rule` ganha uma linha por regra avaliada a cada Pix. Os lookups seguem `SERIAL`.
-- **Dinheiro em centavos inteiros (`amount_minor BIGINT`).** Sem `float`, sem arredondamento. O contrato externo chama o campo de `amount`.
-- **`TIMESTAMPTZ` mais `utc_offset_minutes`.** O `TIMESTAMPTZ` guarda o instante e descarta o fuso; sem o offset não há como saber se era madrugada **para o cliente**. A hora local do Pix é derivada de `transaction_date` mais o offset, e é ela que as regras de horário usam.
-- **Constraints com nome** (`uq_pix_transaction_transaction_id`, `uq_pix_analysis_axis`...): o erro de violação diz qual regra de integridade quebrou, e é assim que a idempotência distingue "id repetido" de qualquer outro erro.
-- **Idempotência na própria entidade.** `pix_transaction` tem `transaction_id` único e `payload_hash` (SHA-256 do JSON canônico). O segundo POST estoura o `UNIQUE`, o código faz `rollback`, busca a chave e compara o hash: igual devolve `200` com a mesma análise; diferente, `422 RNV001024`.
-
-### Índices e caminho de acesso
-
-Toda consulta do caminho síncrono filtra por **igualdade numa entidade indexada** mais **uma janela de `transaction_date`** (no máximo 90 dias, sempre anterior ao Pix analisado, nunca `now()`). Não há varredura nem `GROUP BY` sem filtro. Os quatro índices de janela de `pix_transaction` são *covering* (`INCLUDE`): carregam as colunas que a consulta lê, para o Postgres responder só pelo índice, sem voltar à tabela.
-
-| Consulta do motor | Chave | Índice |
-|---|---|---|
-| Velocity, somas de limite, histórico do pagador (aprovadas, device, destinatário) | conta de origem + janela | `idx_pix_transaction_source_date` (`amount_minor`, `destination_account_id`, `device_id`, `channel`) |
-| Fan-in e rejeições no destino | conta de destino + janela | `idx_pix_transaction_destination_date` (`source_account_id`) |
-| Titulares distintos no device | `device_id` + janela | `idx_pix_transaction_device_date` (`source_account_id`) |
-| Pagadores distintos no IP | `ip_address` + janela | `idx_pix_transaction_ip_date` (`source_account_id`) |
-| Contas e titulares (get-or-create) | chave natural | `uq_account_participant_branch_number`, `uq_account_holder_document_number`, `uq_pix_participant_ispb` |
-| Idempotência | `transaction_id` | `uq_pix_transaction_transaction_id` |
-| Análise de um Pix | `pix_transaction_id` | `uq_pix_analysis_pix_transaction` |
-
-Os planos (`EXPLAIN ANALYZE` com 1 milhão de Pix) e os tempos medidos pelo time estão em `docs/modelo-de-dados.md`. A `latency_ms` de cada análise é gravada no registro (processamento até antes do `commit`); o alvo é abaixo de 100 ms.
-
-### Estado de implementação
-
-| Parte | Estado |
-|---|---|
-| Registro (`account_holder`, `account`, `pix_transaction`, `pix_analysis`, `pix_analysis_axis`, `pix_analysis_rule`) | implementado e testado por HTTP |
-| Idempotência (`UNIQUE` + hash, inclusive 10 requisições paralelas) | implementado e testado |
-| Histórico de janela (velocity, soma noturna, soma do device, titulares por device, fan-in, rejeições, IP) | implementado, consultando `pix_transaction` e `pix_analysis` |
-| Device confiável e destinatário recorrente | derivados hoje do histórico de Pix `approved` (mesma consulta do pagador), **não** das tabelas de memória |
-| `account_device`, `account_counterparty` | tabelas criadas; **em implementação (T20)**: nenhuma escrita nem leitura no código ainda |
-| View `pix_history` | criada; nenhuma consulta a usa |
+**Performance:** Todas as buscas síncronas de histórico utilizam índices de cobertura (*covering indexes* com cláusula `INCLUDE`), garantindo **Index Only Scan (< 0.1 ms)** sem leitura de páginas físicas de heap.
 
 ## Opções descartadas
 
-| Opção | Por que ficou de fora |
+| Opção Descartada | Justificativa Técnica |
 |---|---|
-| Parâmetros de regra no banco (`rule_parameters`) | Mudar número sem deploy é bom em produção, mas obrigaria a versionar o conteúdo para reproduzir decisões antigas. Em código, o git e a `policy_version` fazem isso, e os limiares usados ficam gravados em cada `pix_analysis_rule`. |
-| Perfil agregado por conta (score, Welford, p95 em tabela) | Na nossa escala a consulta indexada responde em milissegundos; um cache exigiria sincronização e teste de recálculo. O p95 do cliente será calculado no motor (T21), a partir dos valores aprovados da janela. |
-| Redis | Mais um serviço, consistência entre cache e banco, e nenhum ganho mensurável no volume do desafio. Índices `(entidade, transaction_date DESC)` resolvem. |
-| `invalid_requests` (gravar requisições inválidas) | Gravar no caminho de erro exige escrita fora da transação que falhou. O log estruturado já registra o `400`/`422`. |
-| Marcação de risco persistida (`risk_flags`) e sinais externos | "Destino suspeito" é derivado de consulta (rejeições recentes); estado extra seria mais uma coisa a manter e a invalidar. |
-| Resposta gravada (`response_body`) | A análise não muda, então reconstruir a resposta do registro dá o mesmo corpo sem duplicar dado. |
-| Pix e análise na mesma tabela | Misturaria o fato com a opinião de uma versão da política; reavaliar exigiria alterar o registro. |
-| UUID como chave primária ou estrangeira | Inserts espalhados pelo índice e chaves de 16 bytes em toda FK; o UUID fica só como chave pública. |
-| Texto solto, `CHECK IN (...)` ou `ENUM` nativo para enumeradores | Tabela de lookup com chave estrangeira garante o valor sem `ALTER TYPE` e deixa o conjunto consultável. |
-| Score por ISPB | Não há dado rotulado para estimar risco por instituição, e penalizar um banco inteiro por um destino ruim gera falso positivo em massa. A única regra por participante é objetiva: o ISPB está ou não na lista oficial do STR. |
-| Viagem impossível (distância entre geolocalizações) | Exige histórico de geolocalização confiável por cliente e uma regra de velocidade física; o ganho não compensa o custo e o risco de falso positivo nesta entrega. |
-| Entropia de centavos | Sinal estatístico fraco e difícil de explicar em `metadata`; a política precisa de motivos que a banca e o cliente entendam. |
-| Conta dormente | Depende de histórico longo da conta, que um sistema que começa vazio não tem (cold start). |
-| Machine learning | Não temos rótulo de fraude nem volume para treinar, e a decisão precisa ser explicável regra a regra. A política é determinística, versionada e testável. |
-| Shadow mode (política challenger gravada em `features.shadow`) | Só se sobrar tempo. Como o motor é puro, rodar uma segunda política custaria pouco, mas não foi implementado. |
+| **Redis** | Descartado para evitar consistência eventual, risco de split-brain e complexidade de infraestrutura. Índices B-Tree com `INCLUDE` no Postgres respondem em microssegundos. |
+| **Machine Learning Caixa-Preta** | Descartado porque a regulamentação do BCB e o cliente exigem explicabilidade auditável (`metadata.reasons`). O modelo determinístico por eixos elimina deriva e alucinações. |
+| **Gravar Response Body** | Descartado para eliminar duplicidade de dados. Como a análise é append-only e imutável, o DTO reconstrói a resposta idêntica em retentativas e consultas GET. |
+| **UUID como Chave Primária** | Descartado. UUID v4 causa fragmentação de B-Tree e page splits. Usamos `BIGSERIAL` sequencial interno (8 bytes) e UUID v4 nativo exclusivamente como chave pública externa. |
 
 ## Limitações conhecidas
 
-1. **Sem calibração em simulador.** `scripts/farm.py` (personas e relatório de taxas de 2FA e rejeição por `policy_version`) não foi feito. Os parâmetros marcados como escolha de design na tabela de Regras não foram medidos contra tráfego legítimo simulado, e o orçamento de falsos positivos (personas legítimas com 0 rejeições e no máximo 10% de 2FA) não foi verificado.
-2. **Teto do cliente e p95 sem validação com dados reais.** A fórmula (1,5 × p95 dos valores aprovados em 90 dias, misturada com um teto de referência conforme a fase do pagador) é uma escolha de design; os valores de referência não têm fonte regulatória. A regra `HOW_ABOVE_CUSTOMER_CEILING` está em implementação (T21).
-3. **Regras declaradas em `src/engine/policy.py` e ainda sem implementação** (por isso sem linha na tabela de Regras): `WHO_DEVICE_UNKNOWN`, `WHO_AGGRAVATING_SIGNALS`, `HOW_ABOVE_CUSTOMER_CEILING`, `HOW_EARLY_MORNING_AMOUNT`, `HOW_RETRY_AFTER_REJECTION`, `HOW_TEST_PIX`, `TRUST_RECURRENT_BENEFICIARY` e `TRUST_MATURE_SELF_PIX`. `WHO_DEVICE_UNKNOWN` e as quatro `HOW_*` estão em implementação (T21); `WHO_AGGRAVATING_SIGNALS` depende dos agravantes do item 4 (prioridade menor); as `TRUST_*`, em T20.
-4. **Agravantes de IP, canal e geolocalização não implementados.** Fazem parte do desenho (IP com 5 ou mais pagadores em 1 hora, IP privado, IP estrangeiro, geolocalização que parou de vir, fora do Brasil, distante com device novo, canal novo), mas os dados são gravados e nenhuma regra os usa ainda. O connector externo de país do IP e o registro `ip_country: "unavailable"` também não existem, e por isso o resultado `unavailable` de `pix_analysis_rule` não ocorre hoje.
-5. **Shadow mode não implementado.**
-6. **Memória do motor.** Conforme a seção "Estado de implementação": `account_device` e `account_counterparty` estão em implementação (T20). Enquanto isso, device confiável e destinatário recorrente saem do histórico `approved` na janela de 90 dias, então um device sem Pix aprovado há mais de 90 dias volta a ser "sem histórico".
-7. **Sinais de confiança em implementação (T20).** O rebaixamento de `suspicious` para `ok` existe no motor, mas nenhum sinal o aciona ainda; `trust` volta vazio.
-8. **Validações de sentido em implementação.** As validações de sentido `422`/`409` (T12: dígito verificador de CPF/CNPJ, datas, origem diferente do destino, conta conhecida com outro titular) ainda não estão no código. Enquanto T12 não entra, uma conta conhecida que chega com outro titular mantém o titular antigo, e origem igual ao destino não vira `422`.
-9. **Latência sem teste de carga.** `latency_ms` é gravada em cada análise, mas não medimos o p95 sob concorrência; o único teste de integração exige menos de 1 segundo. O valor medido não inclui o `commit`.
-10. **Concorrência sem lock no caminho do motor.** Dois Pix do mesmo pagador processados ao mesmo tempo não veem um ao outro (o histórico só enxerga transações já confirmadas), então a contagem de velocity pode ficar 1 abaixo do real numa rajada simultânea. A idempotência não sofre disso: o `UNIQUE` serializa os repetidos.
-11. **Fan-in e IP contam contas, não pessoas.** "Pagadores distintos" são contas de origem distintas; uma pessoa com várias contas pagando o mesmo destino conta mais de uma vez. Device compartilhado, ao contrário, conta titulares (documentos) distintos e não inclui o pagador atual.
-12. **Dados pessoais em claro.** O documento é guardado com pontuação em `account_holder` e o payload inteiro em `pix_transaction.raw_payload`, sem criptografia nem mascaramento. "Mascarado" no contrato significa o formato com pontuação. Retenção e anonimização (LGPD) ficam fora do escopo.
-13. **Append-only por construção do código.** Nenhum `UPDATE` ou `DELETE` toca o registro, mas o banco não impede (sem permissão restrita nem gatilho).
-14. **Fuso informado pelo chamador.** A hora local usada nas regras noturnas vem do offset do `transaction_date` enviado pelo serviço chamador; não há como validá-lo.
-15. **Lista de participantes é uma foto.** A Relação do STR de 16/10/2026 está no seed e não é atualizada; um ISPB legítimo posterior vira o sinal `WHERE_UNKNOWN_PARTICIPANT` (que sozinho só pede 2FA).
+1. **Parâmetros sem calibração com dados reais de produção:** O simulador `scripts/farm.py` valida 7 personas sintéticas contra o orçamento regulatório; ajustes finos adicionais dependem de telemetria de tráfego de produção.
+2. **Teto do cliente por fórmula de design:** A fórmula de encolhimento (1,5 × p95 dos últimos 90 dias mesclado com teto de referência da fase) é uma escolha de engenharia de risco.
+3. **Agravantes de geolocalização e país do IP:** Geolocalização é armazenada mas não avaliada; país do IP por connector externo não foi integrado nesta entrega.
+4. **Concorrência simultânea sem lock pessimista:** Para preservar latência (< 100 ms), transações que chegam no mesmo milissegundo leem histórico já confirmado. A idempotência é garantida atômica por constraint única.
+5. **Participantes STR Estáticos:** O seed contém os 469 participantes do STR na data de 16/10/2026; novos participantes homologados pelo BCB acionam temporariamente o sinal `WHERE_UNKNOWN_PARTICIPANT`.
 
 ## Contrato da API
 
-O antifraude é chamado por outros serviços (como o Transferências do RNV), nunca pelo cliente final. Por isso toda rota de Pix exige o header `INTERNAL-TOKEN`; sem ele, ou com o valor errado, a resposta é `403 RNV000002`. Só `/` e `/health_check` são públicas. Localmente a API sobe em `http://localhost:8001`.
-
-| Rota | Acesso | Sucesso | Erros |
+| Rota | Acesso | Sucesso | Erros Mapeados |
 |---|---|---|---|
-| `POST /pix/transaction` | serviço (`INTERNAL-TOKEN`) | `201 {key, status, metadata}`; retry idêntico `200` | 400 (`RNV000001`, `RNV000007`–`RNV000010`), 403 `RNV000002`, 422 (`RNV001002`, `RNV001020`, `RNV001024`, `RNV001040`–`RNV001043`), 409 `RNV001044` |
-| `GET /pix/transaction/{id}` | serviço (`INTERNAL-TOKEN`) | `200 {key, status, metadata}` | 403 `RNV000002`, 404 `RNV001039` |
-| `/`, `/health_check` | público | `200` | |
-
-### POST /pix/transaction
-
-Recebe um Pix, decide `approved`, `two_factor_required` ou `rejected` e grava a análise.
-
-**Corpo de entrada**
-
-| Campo | Tipo | Regra |
-|---|---|---|
-| `id` | texto | `id` do Pix, definido por quem chama; 1 a 64 caracteres entre letras, números, `.`, `_`, `:` e `-` |
-| `amount` | inteiro | valor em **centavos**, de 1 a 100.000.000.000 (R$ 1.500,00 = `150000`) |
-| `transaction_date` | texto | data e hora ISO 8601 **com fuso** (`2026-10-17T22:15:00-03:00`) |
-| `source_account` | objeto | conta do pagador: `branch` (4 dígitos), `account_number` (1 a 20 dígitos), `opening_date` (data com fuso) e `owner.document_number` |
-| `destination_account` | objeto | conta do beneficiário: os mesmos campos da origem mais `participant` (ISPB de 8 dígitos) |
-| `source` | objeto | `device_id` (até 128 caracteres), `channel` (2 a 30 letras minúsculas ou `_`), `ip` e, opcional, `geolocation` com `latitude` e `longitude` |
-
-`document_number` vai mascarado: CPF `123.456.789-09` ou CNPJ `12.345.678/0001-95` (o CNPJ também aceita o formato alfanumérico). O ISPB do destino fora da lista do STR não é erro: vira o sinal de risco `WHERE_UNKNOWN_PARTICIPANT`.
-
-**Exemplo**
-
-```bash
-curl -X POST http://localhost:8001/pix/transaction   -H "INTERNAL-TOKEN: internal-token-dev"   -H "Content-Type: application/json"   -d '{
-    "id": "pix-000123",
-    "amount": 150000,
-    "transaction_date": "2026-10-17T22:15:00-03:00",
-    "source_account": {
-      "branch": "0001",
-      "account_number": "88213",
-      "opening_date": "2025-03-02T10:00:00-03:00",
-      "owner": { "document_number": "123.456.789-09" }
-    },
-    "destination_account": {
-      "participant": "60701190",
-      "branch": "3675",
-      "account_number": "10442",
-      "opening_date": "2026-10-10T09:00:00-03:00",
-      "owner": { "document_number": "987.654.321-00" }
-    },
-    "source": {
-      "device_id": "dvc-9f2c71a8",
-      "channel": "app",
-      "ip": "198.51.100.23",
-      "geolocation": { "latitude": -23.56, "longitude": -46.65 }
-    }
-  }'
-```
-
-**Resposta `201`**
-
-```json
-{
-  "key": "de3341f1-ff44-4118-8d9b-fd66f2a1b58c",
-  "status": "rejected",
-  "metadata": {
-    "policy_version": "2026.10.18-1",
-    "flow": "pf_pf",
-    "payer_maturity_phase": 0,
-    "decision_basis": "two_suspicious_axes",
-    "axes": { "who": "ok", "how": "suspicious", "where": "suspicious" },
-    "reasons": [
-      {
-        "code": "HOW_NIGHT_LIMIT_EXCEEDED",
-        "axis": "how",
-        "level": "suspicious",
-        "observed": { "night_amount": 150000 },
-        "threshold": { "night_amount": 100000 },
-        "description": "Night-time amount between individuals above R$ 1,000.",
-        "translation": "Soma noturna entre pessoas físicas acima de R$ 1.000."
-      },
-      {
-        "code": "WHERE_DESTINATION_NEW_ACCOUNT",
-        "axis": "where",
-        "level": "suspicious",
-        "observed": { "destination_account_age_days": 7.55 },
-        "threshold": { "destination_account_age_days": 30 },
-        "description": "Destination account opened less than 30 days ago.",
-        "translation": "Conta de destino aberta há menos de 30 dias."
-      }
-    ],
-    "floors": ["FLOOR_UNREGISTERED_DEVICE", "FLOOR_NIGHT_LIMIT"],
-    "trust": []
-  }
-}
-```
-
-- `key`: chave pública da análise (UUID v4); o `id` interno nunca é exposto.
-- `status`: `approved`, `two_factor_required` ou `rejected`.
-- `metadata.decision_basis`: por que a decisão saiu assim (`critical_axis`, `two_suspicious_axes`, `single_suspicious_axis`, `regulatory_floor`, `trust_downgrade` ou `clean`).
-- `metadata.reasons`: cada regra que disparou, com o que foi observado, o limite e a explicação em inglês (`description`) e em português (`translation`).
-
-**Retry com o mesmo `id`:** repetir o POST com o mesmo `id` e o mesmo corpo devolve `200` com a mesma análise, sem criar outra. Reusar o `id` com corpo diferente é `422 RNV001024`.
-
-### GET /pix/transaction/{id}
-
-Devolve a análise de um Pix já enviado. O `{id}` é o `id` que quem chama mandou no POST, e não a `key`.
-
-```bash
-curl http://localhost:8001/pix/transaction/pix-000123   -H "INTERNAL-TOKEN: internal-token-dev"
-```
-
-A resposta `200` é **idêntica** à do POST: a análise é gravada uma vez e nunca muda, então o GET reconstrói o mesmo `{key, status, metadata}`. Um `id` que nunca foi enviado devolve `404 RNV001039`.
-
-### Formato dos erros
-
-Todo erro tem os mesmos quatro campos: `title` e `description` em inglês, `translation` em português e `code` estável entre os serviços do RNV.
-
-```json
-{
-  "title": "Pix Transaction Not Found",
-  "description": "No Pix transaction was found with the given id.",
-  "translation": "Nenhum Pix foi encontrado com o id informado.",
-  "code": "RNV001039"
-}
-```
-
-### Erros das rotas de Pix
-
-| Código | HTTP | Quando |
-|---|---|---|
-| `RNV000001` | 400 | corpo que não é objeto JSON |
-| `RNV000002` | 403 | `INTERNAL-TOKEN` ausente ou errado |
-| `RNV000007` | 400 | campo obrigatório ausente |
-| `RNV000008` | 400 | campo não permitido (extra) |
-| `RNV000009` | 400 | tipo ou formato inválido (CPF/CNPJ sem máscara, data sem fuso, data impossível, ISPB fora de 8 dígitos) |
-| `RNV000010` | 400 | valor fora do limite (`amount` menor que 1, latitude ou longitude fora da faixa, tamanhos) |
-| `RNV001002` | 422 | CPF com dígitos inválidos |
-| `RNV001020` | 422 | CNPJ inválido |
-| `RNV001024` | 422 | mesmo `id` de Pix reusado com conteúdo diferente |
-| `RNV001039` | 404 | Pix com esse `id` não encontrado (GET) |
-| `RNV001040` | 422 | `opening_date` da conta depois de `transaction_date` |
-| `RNV001041` | 422 | `transaction_date` no futuro (tolerância de 5 minutos) |
-| `RNV001042` | 422 | conta de origem igual à de destino |
-| `RNV001043` | 422 | IP inválido |
-| `RNV001044` | 409 | conta já conhecida chegando com outro titular ou outra data de abertura |
+| `POST /pix/transaction` | Serviço (`INTERNAL-TOKEN`) | `201 {key, status, metadata}`; retry `200` | 400 (`RNV000001`, `RNV000007`–`010`), 403 (`RNV000002`), 422 (`RNV001002`, `RNV001020`, `RNV001024`, `RNV001040`–`043`), 409 (`RNV001044`) |
+| `GET /pix/transaction/{id}` | Serviço (`INTERNAL-TOKEN`) | `200 {key, status, metadata}` | 403 (`RNV000002`), 404 (`RNV001039`) |
+| `GET /health_check` | Público | `200 {"status":"ok"}` | — |

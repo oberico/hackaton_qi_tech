@@ -73,7 +73,6 @@ payload.json
 
 # --- Ferramentas de IA / Documentos internos de trabalho ---
 .claude/
-CLAUDE.md
 GEMINI.md
 .local-log*.md
 TASKS.md
