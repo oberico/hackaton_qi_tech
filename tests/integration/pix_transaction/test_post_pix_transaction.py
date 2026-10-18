@@ -61,3 +61,14 @@ class TestPostPixTransaction:
 
         assert status == 201
         assert response["status"] in ANALYSIS_STATUSES
+
+    def test_same_owner_with_two_source_accounts_is_accepted_on_both(self, pix):
+        owner_document = RandomGenerator.cpf()
+        statuses = []
+        for _ in range(2):
+            payload = PayloadGenerator.challenge_example(id=RandomGenerator.uuid())
+            payload["source_account"]["account_number"] = str(uuid.uuid4().int)[:15]
+            payload["source_account"]["owner"]["document_number"] = owner_document
+            statuses.append(pix.post_transaction(payload)[0])
+
+        assert statuses == [201, 201]
