@@ -7,6 +7,8 @@ from tests.utils.pix_requests import PixRequests
 from tests.utils.random_generator import RandomGenerator
 
 ANALYSIS_STATUSES = {"approved", "two_factor_required", "rejected"}
+METADATA_KEYS = {"policy_version", "flow", "payer_maturity_phase", "decision_basis", "axes", "reasons", "floors", "trust"}
+AXES = {"who", "how", "where"}
 
 
 @pytest.fixture
@@ -23,3 +25,13 @@ class TestPostPixTransaction:
         assert status == 201
         assert uuid.UUID(response["key"]).version == 4
         assert response["status"] in ANALYSIS_STATUSES
+
+    def test_response_metadata_has_all_format_keys(self, pix):
+        payload = PayloadGenerator.challenge_example(id=RandomGenerator.uuid())
+
+        _, response = pix.post_transaction(payload)
+
+        metadata = response["metadata"]
+        assert set(metadata.keys()) == METADATA_KEYS
+        assert set(metadata["axes"].keys()) == AXES
+        assert all(isinstance(metadata[key], list) for key in ("reasons", "floors", "trust"))
