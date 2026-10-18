@@ -157,6 +157,7 @@ EARLY_MORNING = "HOW_EARLY_MORNING_AMOUNT"
 DEVICE_UNKNOWN = "WHO_DEVICE_UNKNOWN"
 RETRY_AFTER_REJECTION = "HOW_RETRY_AFTER_REJECTION"
 TEST_PIX = "HOW_TEST_PIX"
+WHO_AGGRAVATING = "WHO_AGGRAVATING_SIGNALS"
 RETRY = {
     "last_rejection_at": make_context().transaction.transaction_date - timedelta(minutes=2),
     "last_rejected_amount": 100000,
@@ -231,6 +232,24 @@ CORE_RULE_CELLS = {
     "device_compromised_by_24h_alone": (
         {"device": {"distinct_documents_24h": 2}}, (CRITICAL, OK, OK), [DEVICE_COMPROMISED], [], [],
         REJECTED, DecisionBasis.CRITICAL_AXIS,
+    ),
+    "who_aggravating_alone": (
+        {
+            "transaction": {"ip_is_private": True, "channel": "web"},
+            "ip": {"distinct_payers_1h": 5},
+            "payer": {"device_trust": DeviceTrust.TRUSTED},
+        },
+        (SUSPICIOUS, OK, OK), [WHO_AGGRAVATING], [], [],
+        TWO_FACTOR, DecisionBasis.SINGLE_SUSPICIOUS_AXIS,
+    ),
+    "who_aggravating_and_night_limit": (
+        {
+            "transaction": {**NIGHT_PIX, "ip_is_private": True},
+            "ip": {"distinct_payers_1h": 5},
+            "payer": {"device_trust": DeviceTrust.TRUSTED},
+        },
+        (SUSPICIOUS, SUSPICIOUS, OK), [WHO_AGGRAVATING], [NIGHT_LIMIT], [],
+        REJECTED, DecisionBasis.TWO_SUSPICIOUS_AXES,
     ),
 }
 

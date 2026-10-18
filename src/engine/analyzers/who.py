@@ -1,6 +1,7 @@
 from typing import List
 
 from src.engine import policy
+from src.engine.analyzers.who_aggravating import evaluate_aggravating_signals
 from src.engine.risk_context import DeviceTrust, EvaluatedRule, RiskContext, RiskLevel
 from src.engine.rules import fired, not_fired
 
@@ -44,7 +45,7 @@ def device_unknown(context: RiskContext) -> EvaluatedRule:
     return not_fired(DEVICE_UNKNOWN_CODE, AXIS, DEVICE_UNKNOWN_DESCRIPTION, DEVICE_UNKNOWN_TRANSLATION, observed, threshold)
 
 
-RULES = (device_compromised, device_unknown)
+RULES = (device_compromised, device_unknown, evaluate_aggravating_signals)
 
 
 def analyze(context: RiskContext) -> List[EvaluatedRule]:
