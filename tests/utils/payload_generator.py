@@ -34,6 +34,7 @@ class PayloadGenerator:
         destination_account_number: str = None,
         destination_opening_date: str = OLD_ACCOUNT_OPENING_DATE,
         device_id: str = None,
+        ip: str = "198.51.100.23",
     ) -> dict:
         moment = transaction_date or datetime.now(timezone.utc) - timedelta(days=1)
         return {
@@ -56,7 +57,7 @@ class PayloadGenerator:
             "source": {
                 "device_id": device_id or RandomGenerator.device_id(),
                 "channel": "app",
-                "ip": "198.51.100.23",
+                "ip": ip,
                 "geolocation": {"latitude": -23.56, "longitude": -46.65},
             },
         }

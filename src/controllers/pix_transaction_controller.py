@@ -15,6 +15,7 @@ from repositories import (
     PixAnalysisRuleRepository,
     PixParticipantRepository,
     PixTransactionRepository,
+    RiskHistoryRepository,
 )
 from src.engine.engine import evaluate
 from src.engine.risk_context import EngineResult, RiskContext
@@ -72,6 +73,7 @@ class PixTransactionController(BaseController):
         self.analyses = PixAnalysisRepository(self.context)
         self.axes = PixAnalysisAxisRepository(self.context)
         self.rules = PixAnalysisRuleRepository(self.context)
+        self.history = RiskHistoryRepository(self.context)
 
     def create(self, payload: dict) -> Tuple[dict, bool]:
         started_at = time.perf_counter()
@@ -86,7 +88,7 @@ class PixTransactionController(BaseController):
         )
         if pix_transaction is None:
             return self._replay(payload), False
-        context = build_risk_context(payload, source_account, destination_account, destination_participant)
+        context = build_risk_context(payload, source_account, destination_account, destination_participant, self.history)
         result = evaluate(context)
         pix_analysis = self._record_analysis(pix_transaction.id, result, context, started_at)
         self.session.commit()

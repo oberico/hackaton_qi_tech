@@ -1,6 +1,6 @@
 # TASKS — motor antifraude Pix (hackathon QI Tech)
 
-Relógio: início 01:15 · checkpoint 03:00 · checkpoint 05:30 · **code freeze 08:00** · entrega 12:00 (repositório no Slack) · apresentação 13:00.
+Relógio: início 01:15 · checkpoint 03:00 · checkpoint 05:30 · **code freeze 09:00** (adiado de 08:00 pelo Ramon, desde que feche tudo e dê para explicar) · entrega 12:00 (repositório no Slack) · apresentação 13:00.
 Fluxo de trabalho: seção "Fluxo de trabalho do time" do `CLAUDE.md`. Estados: `a fazer` · `fazendo` · `em revisão` · `pronto` · `cortado`.
 Cada pessoa só edita a linha da própria tarefa neste arquivo (no próprio PR). Prompts prontos das tarefas da Victoria e da Natalia: `docs/tarefas/<ID>.md`.
 
@@ -65,8 +65,8 @@ Arquivos de contrato (só o Ramon altera): `database/database.sql`, `src/engine/
 | **05:30–06:15** | **Bloco R3:** T12, T13, T14, T15, T16, T17, T18 · T19 (Chaz) | T21 HOW/WHO P1 | T22 cold start |
 | 06:15 | T20 memória (Chaz/Rune) | T21 → T23 farm | T24 README P1 → T25 (P2) |
 | **07:00–07:30** | **Bloco R4:** T19, T20, T21, T22, T24 | T23 | T25 |
-| 07:30–08:00 | T29 freeze: máquina limpa (Wren), README (Hann), `develop` → `main` | revisa o README do zero ao lado do Ramon | idem |
-| 08:00–11:00 | sem código novo: README final, teste do README do zero, slides, ensaio dos 7 min | idem | idem |
+| 08:15–09:00 | T29 freeze: máquina limpa (Wren), README (Hann), `develop` → `main` | revisa o README do zero ao lado do Ramon | idem |
+| 09:00–11:00 | sem código novo: README final, teste do README do zero, slides, ensaio dos 7 min | idem | idem |
 
 ## Checkpoints
 
@@ -74,7 +74,7 @@ Arquivos de contrato (só o Ramon altera): `database/database.sql`, `src/engine/
 |---|---|---|
 | **03:00** | API de pé (T02); POST com motor de mentira (T05 em revisão ou mergeado); molde do motor com testes verdes (T03); README com esqueleto (T04) | GET (T07) passa para 03:30; T11 depois do T12; nada de P1/P2 é tocado |
 | **05:30** | motor real integrado (T10); payload do desafio → `rejected` (T13 verde); idempotência (T09); validações (T12); regras-núcleo WHERE/HOW/WHO (T08, T14, T16); README com Regras preenchidas (T18) e "Como rodar" (T17) | P2 inteiro (T25–T28) → T24 → T21 só com `HOW_ABOVE_CUSTOMER_CEILING` → T23 farm sem relatório |
-| **08:00** | P0 completo, P1 que deu, README testado numa máquina limpa, `develop` → `main` | o P1 que não estiver mergeado às 07:30 fica de fora e vai para "Limitações conhecidas" |
+| **09:00** | P0 completo, P1 que deu, README testado numa máquina limpa, `develop` → `main` | o P1 que não estiver mergeado às 07:30 fica de fora e vai para "Limitações conhecidas" |
 
 ## Catálogo provisório de `rule_code` (o Ramon confirma no T03, que declara todos em `policy.py`)
 
@@ -130,6 +130,19 @@ Dependem dela: todos (T02 e T06 destravam a API).
 ## Decisões de 05:50
 - Contagens de pagadores distintos (fan-in, IP) incluem o pagador atual; rejeições no destino contam só outros pagadores (T15).
 - Ponta solta resolvida em `chore/polish-engine`: descrição das regras segue a constante do `policy.py`; `OWN_PARTICIPANT` em `constants.py`.
+
+## Novo cronograma (06:45, freeze 09:00)
+Regra do Ramon: dá para ir até 09:00 desde que tudo feche, seja entendido e tenha justificativa para apresentar. Nada entra sem teste (red/green), sem linha no README e sem o porquê dos parâmetros.
+| Janela | Entrega | Quem |
+|---|---|---|
+| 06:45–07:15 | merge do T15 · **T07** GET + "Contrato da API" · **T22** PR (os 3 xfails devem virar verdes) | Ramon · Victoria · Natalia |
+| 07:00–08:00 | **T21** regras de profundidade (teto do cliente, madrugada, device unknown, sondagem, Pix de teste) + linhas do README | Chaz (branch própria) |
+| 07:15–08:15 | **T12** validações de sentido (422/409) · **T17** README "Como rodar" | Victoria · Natalia |
+| 07:15–08:15 | **T20** confiança/memória (destinatário recorrente, self-Pix maduro, `account_device`/`account_counterparty`) | Rune |
+| 07:30–08:15 | **T18** exemplo ponta a ponta no README com o `metadata` real · material de defesa (cada regra: por quê, trade-off, limitação) | Hann |
+| 08:15–09:00 | **T29** freeze: clone limpo, README do zero, CI verde, `develop` → `main` | Ramon + Wren |
+| 09:00–11:00 | sem código novo: README final, slides, ensaio dos 7+3 min | todos |
+Corte se atrasar (nesta ordem): T23 farm (já fora do plano), depois T20, depois T21 parcial (só teto do cliente e madrugada). Cada corte vira linha em "Limitações conhecidas".
 
 ## Refactor de 05:00 (camadas adjacentes + testes no padrão do base service)
 - Branch `refactor/layers-and-tests-base-service`: resource com `@SchemaHandler.validate` e `XController()`; `BaseController` com o contexto; repositories com `Context`; controller sem `sqlalchemy`. `tests/architecture/` garante isso.

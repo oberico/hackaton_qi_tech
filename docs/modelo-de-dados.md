@@ -65,5 +65,10 @@ Três propostas avaliadas: (A) uma tabela desnormalizada + análises + hits; (B)
 | Device conhecido | conta + `device_id` | `uq_account_device` / `idx_account_device_device` | Index Scan |
 | Destinatário recorrente | origem + destino | `uq_account_counterparty` | Index Scan |
 | Contas do mesmo titular | `account_holder_id` | `idx_account_holder` | Index Scan |
+| Resumo do pagador no T15 (`payer_summary`: velocity, soma diária do device, approved, 1º approved, device confiável, devices conhecidos, valores approved 90d, relação com o beneficiário; uma consulta com `FILTER`) | conta de origem + `transaction_date` em [t − 90d, t) | `idx_pix_transaction_source_date` + `uq_pix_analysis_pix_transaction` (status) | Index Scan + Index Scan por linha, 0,63 ms (17 linhas); Index Scan e não Index Only porque o join com a análise precisa de `pix_transaction.id`, fora do INCLUDE |
+| Soma noturna PF→PF para titulares diferentes (`sum_night_amount_to_individuals`, só no período noturno) | conta de origem + [início da noite local, t) | `idx_pix_transaction_source_date` + `uq_pix_analysis_pix_transaction` + `account_pkey` + `account_holder_pkey` | Nested Loop de Index Scans, 0,05 ms |
+| Titulares distintos no device, 90d e 24h (`count_device_holders`) | `device_id` + [t − 90d, t) | `idx_pix_transaction_device_date` + `account_pkey` | Index Only Scan (Heap Fetches: 0) + Index Scan, 0,24 ms |
+| Pagadores distintos e rejeições de outros pagadores no destino, 24h (`count_other_payers_to_destination`) | conta de destino + [t − 24h, t) | `idx_pix_transaction_destination_date` + `uq_pix_analysis_pix_transaction` | Index Scan + Index Scan, 0,08 ms |
+| Pagadores distintos no IP, 1h (`count_other_payers_from_ip`) | `ip_address` + [t − 1h, t) | `idx_pix_transaction_ip_date` | Index Only Scan (Heap Fetches: 0), 0,09 ms |
 
 Repository novo entra nesta tabela no mesmo PR. Para conferir: `EXPLAIN (ANALYZE, BUFFERS)` da consulta com um id real; o plano precisa mostrar o índice da linha, sem `Seq Scan` em `pix_transaction`, `pix_analysis`, `account` ou `account_holder`.
