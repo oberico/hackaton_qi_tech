@@ -1,9 +1,9 @@
 import dataclasses
 import ipaddress
 from datetime import datetime, timedelta, timezone
-from typing import Optional, Tuple
+from typing import Optional
 
-from repositories import RiskHistoryRepository
+from repositories import AccountCounterpartyRepository, AccountDeviceRepository, RiskHistoryRepository
 from src.engine import policy
 from src.engine.risk_context import (
     BeneficiaryRelationship,
@@ -157,20 +157,20 @@ def device_trust_of(first_approved_at: Optional[datetime], moment: datetime) -> 
     return DeviceTrust.OBSERVING
 
 
-def payer_and_beneficiary_history(
-    history: RiskHistoryRepository, facts: TransactionFacts, source_account, destination_account
-) -> Tuple[PayerHistory, BeneficiaryRelationship]:
+def payer_history(
+    history: RiskHistoryRepository, devices: AccountDeviceRepository, facts: TransactionFacts, source_account
+) -> PayerHistory:
     moment = facts.transaction_date
+    known_devices = devices.known_devices(source_account.id, facts.device_id, moment)
     summary = history.payer_summary(
         source_account_id=source_account.id,
-        destination_account_id=destination_account.id,
         device_id=facts.device_id,
         since=history_start(facts),
         velocity_since=moment - timedelta(minutes=policy.VELOCITY_WINDOW_MINUTES),
         day_since=local_day_start(facts),
         until=moment,
     )
-    payer = dataclasses.replace(
+    return dataclasses.replace(
         neutral_payer_history(),
         approved_count=summary.approved_count,
         relationship_days=age_in_days(summary.first_approved_at, moment) if summary.first_approved_at else 0,
@@ -178,13 +178,18 @@ def payer_and_beneficiary_history(
         transactions_last_10min=summary.attempts + 1,
         night_amount_to_individuals=night_amount_to_individuals(history, facts, source_account),
         unknown_device_amount_today=summary.device_amount_today,
-        known_devices_count=summary.known_devices_count,
-        device_trust=device_trust_of(summary.device_first_approved_at, moment),
+        known_devices_count=known_devices.known_devices_count,
+        device_trust=device_trust_of(known_devices.device_first_approved_at, moment),
     )
-    beneficiary = BeneficiaryRelationship(
-        approved_count=summary.beneficiary_approved_count, first_approved_at=summary.beneficiary_first_approved_at
-    )
-    return payer, beneficiary
+
+
+def beneficiary_relationship(
+    counterparties: AccountCounterpartyRepository, facts: TransactionFacts, source_account, destination_account
+) -> BeneficiaryRelationship:
+    relationship = counterparties.find_relationship(source_account.id, destination_account.id, facts.transaction_date)
+    if relationship is None:
+        return BeneficiaryRelationship(approved_count=0, first_approved_at=None)
+    return BeneficiaryRelationship(approved_count=relationship.approved_count, first_approved_at=relationship.first_approved_at)
 
 
 def device_history(history: RiskHistoryRepository, facts: TransactionFacts) -> DeviceHistory:
@@ -213,14 +218,19 @@ def ip_history(history: RiskHistoryRepository, facts: TransactionFacts, source_a
 
 
 def build_risk_context(
-    payload: dict, source_account, destination_account, destination_participant, history: RiskHistoryRepository
+    payload: dict,
+    source_account,
+    destination_account,
+    destination_participant,
+    history: RiskHistoryRepository,
+    devices: AccountDeviceRepository,
+    counterparties: AccountCounterpartyRepository,
 ) -> RiskContext:
     facts = transaction_facts(payload, source_account, destination_account, destination_participant)
-    payer, beneficiary = payer_and_beneficiary_history(history, facts, source_account, destination_account)
     return RiskContext(
         transaction=facts,
-        payer=payer,
-        beneficiary=beneficiary,
+        payer=payer_history(history, devices, facts, source_account),
+        beneficiary=beneficiary_relationship(counterparties, facts, source_account, destination_account),
         device=device_history(history, facts),
         destination=destination_history(history, facts, source_account, destination_account),
         ip=ip_history(history, facts, source_account),

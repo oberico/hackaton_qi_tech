@@ -34,5 +34,5 @@ def evaluate(context: RiskContext) -> EngineResult:
         trust_signals=applied_signals,
         maturity_phase=maturity.payer_phase(context.payer.approved_count, context.payer.relationship_days),
         policy_version=policy.POLICY_VERSION,
-        evaluated_rules=who_rules + how_rules + where_rules + floor_rules,
+        evaluated_rules=who_rules + how_rules + where_rules + floor_rules + trust.evaluate_signals(context),
     )

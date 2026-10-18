@@ -12,3 +12,5 @@ from models.pix_analysis import PixAnalysis
 from models.pix_analysis_axis import PixAnalysisAxis
 from models.rule_outcome import RuleOutcome
 from models.pix_analysis_rule import PixAnalysisRule
+from models.account_device import AccountDevice
+from models.account_counterparty import AccountCounterparty
