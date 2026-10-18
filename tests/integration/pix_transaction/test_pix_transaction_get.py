@@ -20,3 +20,10 @@ class TestPixTransactionGet:
         assert status == 404
         assert set(response.keys()) == ERROR_FIELDS
         assert response["code"] == "RNV001039"
+
+    def test_get_without_token_is_forbidden(self):
+        response = RequestGenerator.send_without_token("GET", f"/pix/transaction/{RandomGenerator.transaction_id()}")
+
+        assert response.response_status == 403
+        assert set(response.response_json.keys()) == ERROR_FIELDS
+        assert response.response_json["code"] == "RNV000002"
