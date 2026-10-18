@@ -30,7 +30,7 @@ Arquivos de contrato (só o Ramon altera): `database/database.sql`, `src/engine/
 | T16 | Regras HOW/WHO núcleo: `HOW_VELOCITY_EXCEEDED` (por fluxo, suspicious/critical), `WHO_DEVICE_COMPROMISED` (critical) | MÉDIA | Victoria | Ramon | T03 | 50 | 05:30 | em revisão |
 | T17 | README "Como rodar e testar": do clone ao 1º `curl` (com `INTERNAL-TOKEN`), payload do desafio pronto para colar, `pytest`, farm | BAIXA | Natalia | Victoria | T05, T07 | 30 | 05:45 | a fazer |
 | T18 | README: exemplo de ponta a ponta (payload do desafio → `rejected`, com o porquê) + revisão da tabela de Regras contra o `policy.py` | ALTA | Ramon (Hann) | Victoria | T13, T08 | 30 | 05:30 | a fazer |
-| T22 | **P0**: testes de integração do cold start, incluindo evidência de OUTRA entidade (device, destino): 1ª transação sem histórico nunca `rejected` sem evidência em 2 eixos | BAIXA | Natalia | Victoria | T10 | 35 | 06:20 | a fazer |
+| T22 | **P0**: testes de integração do cold start, incluindo evidência de OUTRA entidade (device, destino): 1ª transação sem histórico nunca `rejected` sem evidência em 2 eixos | BAIXA | Natalia | Victoria | T10 | 35 | 06:20 | em revisão |
 | T29 | Freeze: README testado do zero numa máquina limpa, CI verde, `develop` → `main` | ALTA | Ramon (Wren + Hann) | Victoria | todos P0 | 30 | 08:00 | a fazer |
 
 ### P1 — profundidade que a banca avalia
