@@ -28,14 +28,27 @@ class RiskHistoryRepository:
     def payer_summary(
         self,
         source_account_id: int,
+        destination_account_id: int,
         device_id: str,
         since: datetime,
         velocity_since: datetime,
         day_since: datetime,
+        test_since: datetime,
+        test_max_amount: int,
+        test_multiplier: int,
+        amount: int,
         until: datetime,
     ) -> Row:
         approved = AnalysisStatus.enumerator == APPROVED
+        rejected = AnalysisStatus.enumerator == REJECTED
         same_device = PixTransaction.device_id == device_id
+        same_beneficiary = PixTransaction.destination_account_id == destination_account_id
+        test_pix = and_(
+            same_beneficiary,
+            PixTransaction.transaction_date >= test_since,
+            PixTransaction.amount_minor <= test_max_amount,
+            PixTransaction.amount_minor * test_multiplier <= amount,
+        )
         return self.session.execute(
             select(
                 func.count().filter(PixTransaction.transaction_date >= velocity_since).label("attempts"),
@@ -45,6 +58,11 @@ class RiskHistoryRepository:
                 func.count().filter(approved).label("approved_count"),
                 func.min(PixTransaction.transaction_date).filter(approved).label("first_approved_at"),
                 func.array_agg(aggregate_order_by(PixTransaction.amount_minor, PixTransaction.transaction_date)).filter(approved).label("approved_amounts"),
+                func.count().filter(test_pix).label("test_pix_count"),
+                func.max(PixTransaction.transaction_date).filter(rejected).label("last_rejection_at"),
+                func.array_agg(aggregate_order_by(PixTransaction.amount_minor, PixTransaction.transaction_date.desc()))
+                .filter(rejected)
+                .label("rejected_amounts_latest_first"),
             )
             .select_from(PixTransaction)
             .outerjoin(PixAnalysis, PixAnalysis.pix_transaction_id == PixTransaction.id)
