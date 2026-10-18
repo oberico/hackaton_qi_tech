@@ -1,7 +1,7 @@
 import dataclasses
-import ipaddress
 from datetime import datetime, timedelta, timezone
-from typing import Optional
+import ipaddress
+from typing import List, Optional
 
 from repositories import AccountCounterpartyRepository, AccountDeviceRepository, RiskHistoryRepository
 from src.engine import policy
@@ -157,17 +157,26 @@ def device_trust_of(first_approved_at: Optional[datetime], moment: datetime) -> 
     return DeviceTrust.OBSERVING
 
 
+def latest_rejected_amount(amounts_latest_first: Optional[List[int]]) -> Optional[int]:
+    return amounts_latest_first[0] if amounts_latest_first else None
+
+
 def payer_history(
-    history: RiskHistoryRepository, devices: AccountDeviceRepository, facts: TransactionFacts, source_account
+    history: RiskHistoryRepository, devices: AccountDeviceRepository, facts: TransactionFacts, source_account, destination_account
 ) -> PayerHistory:
     moment = facts.transaction_date
     known_devices = devices.known_devices(source_account.id, facts.device_id, moment)
     summary = history.payer_summary(
         source_account_id=source_account.id,
+        destination_account_id=destination_account.id,
         device_id=facts.device_id,
         since=history_start(facts),
         velocity_since=moment - timedelta(minutes=policy.VELOCITY_WINDOW_MINUTES),
         day_since=local_day_start(facts),
+        test_since=moment - timedelta(minutes=policy.TEST_PIX_WINDOW_MINUTES),
+        test_max_amount=policy.TEST_PIX_MAX_AMOUNT_MINOR,
+        test_multiplier=policy.TEST_PIX_FOLLOWUP_MULTIPLIER,
+        amount=facts.amount,
         until=moment,
     )
     return dataclasses.replace(
@@ -178,6 +187,9 @@ def payer_history(
         transactions_last_10min=summary.attempts + 1,
         night_amount_to_individuals=night_amount_to_individuals(history, facts, source_account),
         unknown_device_amount_today=summary.device_amount_today,
+        small_amount_to_destination_last_15min=summary.test_pix_count > 0,
+        last_rejection_at=summary.last_rejection_at,
+        last_rejected_amount=latest_rejected_amount(summary.rejected_amounts_latest_first),
         known_devices_count=known_devices.known_devices_count,
         device_trust=device_trust_of(known_devices.device_first_approved_at, moment),
     )
@@ -229,7 +241,7 @@ def build_risk_context(
     facts = transaction_facts(payload, source_account, destination_account, destination_participant)
     return RiskContext(
         transaction=facts,
-        payer=payer_history(history, devices, facts, source_account),
+        payer=payer_history(history, devices, facts, source_account, destination_account),
         beneficiary=beneficiary_relationship(counterparties, facts, source_account, destination_account),
         device=device_history(history, facts),
         destination=destination_history(history, facts, source_account, destination_account),

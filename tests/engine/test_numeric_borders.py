@@ -1,8 +1,10 @@
+from datetime import timedelta
+
 import pytest
 
 from src.engine import policy
 from src.engine.engine import evaluate
-from src.engine.risk_context import Decision, DecisionBasis, DeviceTrust, Flow, RiskLevel, RuleOutcome
+from src.engine.risk_context import Decision, DecisionBasis, DeviceTrust, Flow, PersonType, RiskLevel, RuleOutcome
 from tests.engine.conftest import local_datetime, make_context, rule_of
 
 APPROVED = (Decision.APPROVED, DecisionBasis.CLEAN)
@@ -286,3 +288,198 @@ def test_device_compromised_border(total, last_24h, level):
     assert rule.description and rule.translation
     assert result.who.level == (level or RiskLevel.OK)
     assert (result.decision, result.decision_basis) == DECISION_BY_LEVEL[level]
+
+
+CEILING_BORDERS = {
+    "phase_zero_individual_exactly_the_reference": (300000, PersonType.INDIVIDUAL, 400, [], None, 300000),
+    "phase_zero_individual_one_cent_above_the_reference": (300001, PersonType.INDIVIDUAL, 400, [], RiskLevel.SUSPICIOUS, 300000),
+    "phase_zero_new_account_exactly_the_reference": (100000, PersonType.INDIVIDUAL, 89.9, [], None, 100000),
+    "phase_zero_new_account_one_cent_above_the_reference": (100001, PersonType.INDIVIDUAL, 89.9, [], RiskLevel.SUSPICIOUS, 100000),
+    "account_of_ninety_days_uses_the_mature_reference": (100001, PersonType.INDIVIDUAL, 90, [], None, 300000),
+    "phase_zero_company_exactly_the_reference": (2000000, PersonType.COMPANY, 400, [], None, 2000000),
+    "phase_zero_company_one_cent_above_the_reference": (2000001, PersonType.COMPANY, 400, [], RiskLevel.SUSPICIOUS, 2000000),
+    "challenge_example_amount_is_below_the_cold_start_reference": (150000, PersonType.INDIVIDUAL, 400, [], None, 300000),
+    "phase_one_exactly_the_blended_ceiling": (252500, PersonType.INDIVIDUAL, 400, [10000], None, 252500),
+    "phase_one_one_cent_above_the_blended_ceiling": (252501, PersonType.INDIVIDUAL, 400, [10000], RiskLevel.SUSPICIOUS, 252500),
+    "five_approved_exactly_the_blended_ceiling": (157500, PersonType.INDIVIDUAL, 400, [10000] * 5, None, 157500),
+    "five_approved_one_cent_above_the_blended_ceiling": (157501, PersonType.INDIVIDUAL, 400, [10000] * 5, RiskLevel.SUSPICIOUS, 157500),
+    "percentile_is_interpolated_over_the_sorted_amounts": (
+        181500, PersonType.INDIVIDUAL, 400, [50000, 10000, 10000, 10000, 10000], None, 181500,
+    ),
+    "percentile_interpolated_one_cent_above": (
+        181501, PersonType.INDIVIDUAL, 400, [10000, 10000, 50000, 10000, 10000], RiskLevel.SUSPICIOUS, 181500,
+    ),
+    "fractional_ceiling_is_truncated_to_whole_cents": (218571, PersonType.INDIVIDUAL, 400, [10000, 10001], None, 218571),
+    "fractional_ceiling_one_cent_above": (218572, PersonType.INDIVIDUAL, 400, [10000, 10001], RiskLevel.SUSPICIOUS, 218571),
+}
+
+
+@pytest.mark.parametrize(
+    "amount, person_type, account_age_days, approved_amounts, level, ceiling", CEILING_BORDERS.values(), ids=CEILING_BORDERS.keys()
+)
+def test_customer_ceiling_border(amount, person_type, account_age_days, approved_amounts, level, ceiling):
+    flow = Flow.PJ_PJ if person_type == PersonType.COMPANY else Flow.PF_PF
+    context = make_context(
+        transaction={
+            "amount": amount, "source_person_type": person_type, "flow": flow, "source_account_age_days": account_age_days,
+        },
+        payer={
+            "approved_count": len(approved_amounts), "approved_amounts_90d": approved_amounts, "relationship_days": 60,
+            "device_trust": DeviceTrust.TRUSTED,
+        },
+    )
+
+    result = evaluate(context)
+
+    rule = rule_of(result, "HOW_ABOVE_CUSTOMER_CEILING")
+    assert (rule.outcome, rule.level) == (RuleOutcome.FIRED if level else RuleOutcome.NOT_FIRED, level)
+    assert (rule.observed, rule.threshold) == ({"amount": amount}, {"ceiling": ceiling})
+    assert rule.axis == "how"
+    assert rule.description and rule.translation
+    assert (result.decision, result.decision_basis) == (TWO_FACTOR_BY_AXIS if level else APPROVED)
+
+
+EARLY_MORNING_BORDERS = {
+    "midnight_is_early_morning": (50000, local_datetime(0, 0), {}, 0, True),
+    "five_fifty_nine_is_early_morning": (50000, local_datetime(5, 59), {}, 5, True),
+    "six_hundred_is_day": (50000, local_datetime(6, 0), {}, 6, False),
+    "twenty_three_fifty_nine_is_evening": (50000, local_datetime(23, 59), {}, 23, False),
+    "fourteen_hundred_is_day": (50000, local_datetime(14, 0), {}, 14, False),
+    "exactly_two_hundred_reais_does_not_fire": (20000, local_datetime(3, 0), {}, 3, False),
+    "one_cent_above_two_hundred_reais_fires": (20001, local_datetime(3, 0), {}, 3, True),
+    "exactly_one_thousand_reais_fires": (100000, local_datetime(3, 0), {}, 3, True),
+    "one_cent_above_one_thousand_reais_is_left_to_the_night_limit": (100001, local_datetime(3, 0), {}, 3, False),
+    "local_hour_comes_from_the_payer_offset": (50000, local_datetime(4, 0, utc_offset_minutes=0), {}, 1, True),
+    "utc_early_morning_that_is_local_evening_does_not_fire": (50000, local_datetime(2, 0, utc_offset_minutes=0), {}, 23, False),
+    "company_payer_is_also_covered": (50000, local_datetime(3, 0), {"flow": Flow.PJ_PJ}, 3, True),
+}
+
+
+@pytest.mark.parametrize(
+    "amount, transaction_date, transaction, local_hour, fires", EARLY_MORNING_BORDERS.values(), ids=EARLY_MORNING_BORDERS.keys()
+)
+def test_early_morning_amount_border(amount, transaction_date, transaction, local_hour, fires):
+    context = make_context(
+        transaction={"amount": amount, "transaction_date": transaction_date, **transaction},
+        payer={"device_trust": DeviceTrust.TRUSTED},
+    )
+
+    result = evaluate(context)
+
+    rule = rule_of(result, "HOW_EARLY_MORNING_AMOUNT")
+    assert (rule.outcome, rule.level) == (RuleOutcome.FIRED if fires else RuleOutcome.NOT_FIRED, RiskLevel.SUSPICIOUS if fires else None)
+    assert rule.observed == {"amount": amount, "local_hour": local_hour}
+    assert rule.threshold == {"min_amount": 20000, "max_amount": 100000}
+    assert rule.axis == "how"
+    assert rule.description and rule.translation
+    assert [reason.code for reason in result.how.rules if reason.code == "HOW_EARLY_MORNING_AMOUNT"] == (
+        ["HOW_EARLY_MORNING_AMOUNT"] if fires else []
+    )
+    if fires:
+        assert (result.decision, result.decision_basis) == TWO_FACTOR_BY_AXIS
+
+
+DEVICE_UNKNOWN_BORDERS = {
+    "unknown_device_with_one_known_device": (DeviceTrust.UNKNOWN, 1, True),
+    "unknown_device_with_many_known_devices": (DeviceTrust.UNKNOWN, 4, True),
+    "unknown_device_without_known_devices_is_cold_start": (DeviceTrust.UNKNOWN, 0, False),
+    "observing_device_with_known_devices": (DeviceTrust.OBSERVING, 2, False),
+    "trusted_device_with_known_devices": (DeviceTrust.TRUSTED, 2, False),
+}
+
+
+@pytest.mark.parametrize("device_trust, known_devices, fires", DEVICE_UNKNOWN_BORDERS.values(), ids=DEVICE_UNKNOWN_BORDERS.keys())
+def test_device_unknown_border(device_trust, known_devices, fires):
+    result = evaluate(make_context(payer={"device_trust": device_trust, "known_devices_count": known_devices}))
+
+    rule = rule_of(result, "WHO_DEVICE_UNKNOWN")
+    assert (rule.outcome, rule.level) == (RuleOutcome.FIRED if fires else RuleOutcome.NOT_FIRED, RiskLevel.SUSPICIOUS if fires else None)
+    assert rule.observed == {"device_trust": device_trust.value, "known_devices_count": known_devices}
+    assert rule.threshold == {"known_devices_count": 1}
+    assert rule.axis == "who"
+    assert rule.description and rule.translation
+    assert result.who.level == (RiskLevel.SUSPICIOUS if fires else RiskLevel.OK)
+    assert (result.decision, result.decision_basis) == (TWO_FACTOR_BY_AXIS if fires else APPROVED)
+
+
+RETRY_BORDERS = {
+    "smaller_amount_one_second_inside_the_window": (599, 100000, 50000, True, 9),
+    "smaller_amount_exactly_ten_minutes_later": (600, 100000, 50000, False, 10),
+    "smaller_amount_one_minute_later": (60, 100000, 50000, True, 1),
+    "one_cent_smaller_amount": (60, 100000, 99999, True, 1),
+    "same_amount_is_not_a_probe": (60, 100000, 100000, False, 1),
+    "larger_amount_is_not_a_probe": (60, 100000, 100001, False, 1),
+    "rejection_twenty_minutes_ago": (1200, 100000, 50000, False, 20),
+    "no_previous_rejection": (None, None, 50000, False, None),
+}
+
+
+@pytest.mark.parametrize(
+    "seconds_since, rejected_amount, amount, fires, minutes_since", RETRY_BORDERS.values(), ids=RETRY_BORDERS.keys()
+)
+def test_retry_after_rejection_border(seconds_since, rejected_amount, amount, fires, minutes_since):
+    base = make_context()
+    rejection_at = None if seconds_since is None else base.transaction.transaction_date - timedelta(seconds=seconds_since)
+    context = make_context(
+        transaction={"amount": amount},
+        payer={"last_rejection_at": rejection_at, "last_rejected_amount": rejected_amount, "device_trust": DeviceTrust.TRUSTED},
+    )
+
+    result = evaluate(context)
+
+    rule = rule_of(result, "HOW_RETRY_AFTER_REJECTION")
+    assert (rule.outcome, rule.level) == (RuleOutcome.FIRED if fires else RuleOutcome.NOT_FIRED, RiskLevel.SUSPICIOUS if fires else None)
+    if seconds_since is None:
+        assert (rule.observed, rule.threshold) == (None, None)
+    else:
+        assert rule.observed == {"minutes_since_rejection": minutes_since, "amount": amount, "last_rejected_amount": rejected_amount}
+        assert rule.threshold == {"window_minutes": 10}
+    assert rule.axis == "how"
+    assert rule.description and rule.translation
+    assert result.how.level == (RiskLevel.SUSPICIOUS if fires else RiskLevel.OK)
+    assert (result.decision, result.decision_basis) == (TWO_FACTOR_BY_AXIS if fires else APPROVED)
+
+
+TEST_PIX_THRESHOLD = {
+    "test_max_amount": 1000,
+    "followup_min_amount": 20000,
+    "followup_multiplier": 20,
+    "window_minutes": 15,
+}
+
+TEST_PIX_BORDERS = {
+    "small_pix_then_exactly_two_hundred_reais": (True, 20000, None, True),
+    "small_pix_then_one_cent_below_two_hundred_reais": (True, 19999, None, False),
+    "small_pix_then_large_amount": (True, 100000, None, True),
+    "no_small_pix_to_the_destination": (False, 100000, None, False),
+    "destination_first_approved_by_the_test_pix_itself": (True, 100000, 5, True),
+    "destination_first_approved_exactly_at_the_window_start": (True, 100000, 15, True),
+    "destination_with_a_relationship_before_the_window_is_recurrent": (True, 100000, 16, False),
+    "destination_approved_long_ago_is_recurrent": (True, 100000, 60 * 24 * 30, False),
+}
+
+
+@pytest.mark.parametrize(
+    "small_amount_sent, amount, first_approved_minutes_ago, fires", TEST_PIX_BORDERS.values(), ids=TEST_PIX_BORDERS.keys()
+)
+def test_test_pix_border(small_amount_sent, amount, first_approved_minutes_ago, fires):
+    moment = make_context().transaction.transaction_date
+    first_approved_at = None if first_approved_minutes_ago is None else moment - timedelta(minutes=first_approved_minutes_ago)
+    context = make_context(
+        transaction={"amount": amount},
+        payer={"small_amount_to_destination_last_15min": small_amount_sent, "device_trust": DeviceTrust.TRUSTED},
+        beneficiary={
+            "approved_count": 0 if first_approved_at is None else 1,
+            "first_approved_at": first_approved_at,
+        },
+    )
+
+    result = evaluate(context)
+
+    rule = rule_of(result, "HOW_TEST_PIX")
+    assert (rule.outcome, rule.level) == (RuleOutcome.FIRED if fires else RuleOutcome.NOT_FIRED, RiskLevel.SUSPICIOUS if fires else None)
+    assert rule.observed == {"amount": amount, "small_amount_to_destination_last_15min": small_amount_sent}
+    assert rule.threshold == TEST_PIX_THRESHOLD
+    assert rule.axis == "how"
+    assert rule.description and rule.translation
+    assert (result.decision, result.decision_basis) == (TWO_FACTOR_BY_AXIS if fires else APPROVED)

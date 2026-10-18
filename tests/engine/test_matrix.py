@@ -1,7 +1,9 @@
+from datetime import timedelta
+
 import pytest
 
 from src.engine.engine import evaluate
-from src.engine.risk_context import Decision, DecisionBasis, RiskLevel, RuleOutcome
+from src.engine.risk_context import Decision, DecisionBasis, DeviceTrust, RiskLevel, RuleOutcome
 from tests.engine.conftest import local_datetime, make_context
 
 OK = RiskLevel.OK
@@ -127,7 +129,11 @@ FLOOR_CELLS = {
         (OK, OK, CRITICAL), {"amount": 50000}, {}, REJECTED, DecisionBasis.CRITICAL_AXIS, [FLOOR_UNREGISTERED_DEVICE],
     ),
     "device_floor_alone_never_rejects": (
-        None, {"amount": 5000000}, {"unknown_device_amount_today": 5000000}, TWO_FACTOR, DecisionBasis.REGULATORY_FLOOR,
+        None, {"amount": 250000}, {"unknown_device_amount_today": 5000000}, TWO_FACTOR, DecisionBasis.REGULATORY_FLOOR,
+        [FLOOR_UNREGISTERED_DEVICE],
+    ),
+    "device_unknown_signal_and_floor_coexist": (
+        None, {"amount": 30000}, {"known_devices_count": 1}, TWO_FACTOR, DecisionBasis.SINGLE_SUSPICIOUS_AXIS,
         [FLOOR_UNREGISTERED_DEVICE],
     ),
 }
@@ -146,6 +152,16 @@ def test_regulatory_floor_only_lifts_an_approval(stub_axes, levels, transaction,
 
 VELOCITY = "HOW_VELOCITY_EXCEEDED"
 DEVICE_COMPROMISED = "WHO_DEVICE_COMPROMISED"
+CEILING = "HOW_ABOVE_CUSTOMER_CEILING"
+EARLY_MORNING = "HOW_EARLY_MORNING_AMOUNT"
+DEVICE_UNKNOWN = "WHO_DEVICE_UNKNOWN"
+RETRY_AFTER_REJECTION = "HOW_RETRY_AFTER_REJECTION"
+TEST_PIX = "HOW_TEST_PIX"
+RETRY = {
+    "last_rejection_at": make_context().transaction.transaction_date - timedelta(minutes=2),
+    "last_rejected_amount": 100000,
+    "device_trust": DeviceTrust.TRUSTED,
+}
 
 CORE_RULE_CELLS = {
     "velocity_suspicious_alone": (
@@ -160,6 +176,53 @@ CORE_RULE_CELLS = {
         {"payer": {"transactions_last_10min": 3}, "transaction": {"destination_account_age_days": 7}},
         (OK, SUSPICIOUS, SUSPICIOUS), [], [VELOCITY], [DESTINATION_NEW_ACCOUNT],
         REJECTED, DecisionBasis.TWO_SUSPICIOUS_AXES,
+    ),
+    "customer_ceiling_alone": (
+        {"transaction": {"amount": 300001}, "payer": {"device_trust": DeviceTrust.TRUSTED}}, (OK, SUSPICIOUS, OK), [], [CEILING], [],
+        TWO_FACTOR, DecisionBasis.SINGLE_SUSPICIOUS_AXIS,
+    ),
+    "customer_ceiling_and_new_destination": (
+        {"transaction": {"amount": 300001, "destination_account_age_days": 7}, "payer": {"device_trust": DeviceTrust.TRUSTED}},
+        (OK, SUSPICIOUS, SUSPICIOUS), [], [CEILING], [DESTINATION_NEW_ACCOUNT], REJECTED, DecisionBasis.TWO_SUSPICIOUS_AXES,
+    ),
+    "early_morning_amount_alone": (
+        {"transaction": {"amount": 50000, "transaction_date": local_datetime(3, 0)}, "payer": {"device_trust": DeviceTrust.TRUSTED}},
+        (OK, SUSPICIOUS, OK), [], [EARLY_MORNING], [], TWO_FACTOR, DecisionBasis.SINGLE_SUSPICIOUS_AXIS,
+    ),
+    "early_morning_amount_and_new_destination": (
+        {
+            "transaction": {"amount": 50000, "transaction_date": local_datetime(3, 0), "destination_account_age_days": 7},
+            "payer": {"device_trust": DeviceTrust.TRUSTED},
+        },
+        (OK, SUSPICIOUS, SUSPICIOUS), [], [EARLY_MORNING], [DESTINATION_NEW_ACCOUNT], REJECTED, DecisionBasis.TWO_SUSPICIOUS_AXES,
+    ),
+    "device_unknown_alone": (
+        {"payer": {"known_devices_count": 1}}, (SUSPICIOUS, OK, OK), [DEVICE_UNKNOWN], [], [],
+        TWO_FACTOR, DecisionBasis.SINGLE_SUSPICIOUS_AXIS,
+    ),
+    "device_unknown_and_new_destination": (
+        {"payer": {"known_devices_count": 1}, "transaction": {"destination_account_age_days": 7}},
+        (SUSPICIOUS, OK, SUSPICIOUS), [DEVICE_UNKNOWN], [], [DESTINATION_NEW_ACCOUNT], REJECTED, DecisionBasis.TWO_SUSPICIOUS_AXES,
+    ),
+    "device_unknown_without_known_devices_is_cold_start": ({}, (OK, OK, OK), [], [], [], APPROVED, DecisionBasis.CLEAN),
+    "retry_after_rejection_alone": (
+        {"payer": RETRY, "transaction": {"amount": 50000}}, (OK, SUSPICIOUS, OK), [], [RETRY_AFTER_REJECTION], [],
+        TWO_FACTOR, DecisionBasis.SINGLE_SUSPICIOUS_AXIS,
+    ),
+    "retry_after_rejection_and_new_destination": (
+        {"payer": RETRY, "transaction": {"amount": 50000, "destination_account_age_days": 7}},
+        (OK, SUSPICIOUS, SUSPICIOUS), [], [RETRY_AFTER_REJECTION], [DESTINATION_NEW_ACCOUNT], REJECTED, DecisionBasis.TWO_SUSPICIOUS_AXES,
+    ),
+    "test_pix_alone": (
+        {"payer": {"small_amount_to_destination_last_15min": True, "device_trust": DeviceTrust.TRUSTED}, "transaction": {"amount": 50000}},
+        (OK, SUSPICIOUS, OK), [], [TEST_PIX], [], TWO_FACTOR, DecisionBasis.SINGLE_SUSPICIOUS_AXIS,
+    ),
+    "test_pix_and_new_destination": (
+        {
+            "payer": {"small_amount_to_destination_last_15min": True, "device_trust": DeviceTrust.TRUSTED},
+            "transaction": {"amount": 50000, "destination_account_age_days": 7},
+        },
+        (OK, SUSPICIOUS, SUSPICIOUS), [], [TEST_PIX], [DESTINATION_NEW_ACCOUNT], REJECTED, DecisionBasis.TWO_SUSPICIOUS_AXES,
     ),
     "device_compromised_by_total_alone": (
         {"device": {"distinct_documents_total": 3}}, (CRITICAL, OK, OK), [DEVICE_COMPROMISED], [], [],
