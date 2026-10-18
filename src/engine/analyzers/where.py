@@ -8,8 +8,8 @@ AXIS = "where"
 AGE_DECIMALS = 2
 
 DESTINATION_NEW_ACCOUNT_CODE = "WHERE_DESTINATION_NEW_ACCOUNT"
-DESTINATION_NEW_ACCOUNT_DESCRIPTION = "Destination account opened less than 30 days ago."
-DESTINATION_NEW_ACCOUNT_TRANSLATION = "Conta de destino aberta há menos de 30 dias."
+DESTINATION_NEW_ACCOUNT_DESCRIPTION = "Destination account opened less than {days} days ago."
+DESTINATION_NEW_ACCOUNT_TRANSLATION = "Conta de destino aberta há menos de {days} dias."
 
 UNKNOWN_PARTICIPANT_CODE = "WHERE_UNKNOWN_PARTICIPANT"
 UNKNOWN_PARTICIPANT_DESCRIPTION = "Destination participant (ISPB) is not on the BCB STR participant list."
@@ -17,19 +17,14 @@ UNKNOWN_PARTICIPANT_TRANSLATION = "Participante de destino (ISPB) fora da lista 
 
 
 def destination_new_account(context: RiskContext) -> EvaluatedRule:
-    observed = {"destination_account_age_days": round(context.transaction.destination_account_age_days, AGE_DECIMALS)}
+    age_days = context.transaction.destination_account_age_days
+    observed = {"destination_account_age_days": round(age_days, AGE_DECIMALS)}
     threshold = {"destination_account_age_days": policy.DESTINATION_NEW_ACCOUNT_DAYS}
-    if context.transaction.destination_account_age_days < policy.DESTINATION_NEW_ACCOUNT_DAYS:
-        return fired(
-            DESTINATION_NEW_ACCOUNT_CODE,
-            AXIS,
-            RiskLevel.SUSPICIOUS,
-            observed,
-            threshold,
-            DESTINATION_NEW_ACCOUNT_DESCRIPTION,
-            DESTINATION_NEW_ACCOUNT_TRANSLATION,
-        )
-    return not_fired(DESTINATION_NEW_ACCOUNT_CODE, AXIS, DESTINATION_NEW_ACCOUNT_DESCRIPTION, DESTINATION_NEW_ACCOUNT_TRANSLATION, observed, threshold)
+    description = DESTINATION_NEW_ACCOUNT_DESCRIPTION.format(days=policy.DESTINATION_NEW_ACCOUNT_DAYS)
+    translation = DESTINATION_NEW_ACCOUNT_TRANSLATION.format(days=policy.DESTINATION_NEW_ACCOUNT_DAYS)
+    if age_days < policy.DESTINATION_NEW_ACCOUNT_DAYS:
+        return fired(DESTINATION_NEW_ACCOUNT_CODE, AXIS, RiskLevel.SUSPICIOUS, observed, threshold, description, translation)
+    return not_fired(DESTINATION_NEW_ACCOUNT_CODE, AXIS, description, translation, observed, threshold)
 
 
 def unknown_participant(context: RiskContext) -> EvaluatedRule:

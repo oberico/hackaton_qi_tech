@@ -127,6 +127,10 @@ Dependem dela: todos (T02 e T06 destravam a API).
 - `opening_date` posterior ao Pix: `422 RNV001040` no T12 (barrar antes do motor).
 - p95 do teto do cliente calculado no motor (lista `approved_amounts_90d`, interpolação linear); não vai SQL `percentile_cont`.
 
+## Decisões de 05:50
+- Contagens de pagadores distintos (fan-in, IP) incluem o pagador atual; rejeições no destino contam só outros pagadores (T15).
+- Ponta solta resolvida em `chore/polish-engine`: descrição das regras segue a constante do `policy.py`; `OWN_PARTICIPANT` em `constants.py`.
+
 ## Refactor de 05:00 (camadas adjacentes + testes no padrão do base service)
 - Branch `refactor/layers-and-tests-base-service`: resource com `@SchemaHandler.validate` e `XController()`; `BaseController` com o contexto; repositories com `Context`; controller sem `sqlalchemy`. `tests/architecture/` garante isso.
 - Testes: integração em `class Test<Operação>` com o harness de `tests/utils/` (`RequestGenerator`, `PayloadGenerator`, `ObjectGenerator`, `RandomGenerator`); motor em `tests/engine/` só com matriz e bordas em tabelas. `tests/unit/` deixou de existir.
