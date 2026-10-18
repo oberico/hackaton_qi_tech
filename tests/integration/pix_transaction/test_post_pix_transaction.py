@@ -9,6 +9,7 @@ from tests.utils.random_generator import RandomGenerator
 ANALYSIS_STATUSES = {"approved", "two_factor_required", "rejected"}
 METADATA_KEYS = {"policy_version", "flow", "payer_maturity_phase", "decision_basis", "axes", "reasons", "floors", "trust"}
 AXES = {"who", "how", "where"}
+UNLISTED_PARTICIPANT = "12345678"
 
 
 @pytest.fixture
@@ -51,3 +52,12 @@ class TestPostPixTransaction:
         _, response = pix.post_transaction(payload)
 
         assert response["metadata"]["flow"] == "pf_pj"
+
+    def test_destination_participant_outside_the_str_list_is_not_an_error(self, pix):
+        payload = PayloadGenerator.challenge_example(id=RandomGenerator.uuid())
+        payload["destination_account"]["participant"] = UNLISTED_PARTICIPANT
+
+        status, response = pix.post_transaction(payload)
+
+        assert status == 201
+        assert response["status"] in ANALYSIS_STATUSES
