@@ -18,7 +18,7 @@ Arquivos de contrato (só o Ramon altera): `database/database.sql`, `src/engine/
 | T04 | README: esqueleto exato do modelo + "Como o motor de decisão funciona" + "Como as regras viram decisão" + cabeçalho e formato da tabela de Regras | ALTA | Ramon (Hann) | Victoria | — | 40 | 02:00 | pronto |
 | T05 | `POST /pix/transaction` com motor de mentira: resource, controller, repositories de gravação (titular, conta, Pix, análise, 3 eixos), DTO, formato do `metadata`, **e os 15 models, guiados pelos testes** | MÉDIA | Victoria | Ramon | T01, T02 | 140 | 03:45 | pronto |
 | T06 | ~~Models SQLAlchemy~~ absorvido pelo T05: os 15 models nascem dos testes do POST (sem teste próprio, não há ciclo TDD) | — | Victoria (no T05) | Ramon | — | 0 | — | cortado |
-| T07 | `GET /pix/transaction/{id}` (200 / 404 `RNV001039`) + seção `## Contrato da API` do README | MÉDIA | Victoria | Ramon | T05 | 30 | 03:30 | a fazer |
+| T07 | `GET /pix/transaction/{id}` (200 / 404 `RNV001039`) + seção `## Contrato da API` do README | MÉDIA | Victoria | Ramon | T05 | 30 | 03:30 | em revisão |
 | T08 | Regras WHERE do payload: `WHERE_DESTINATION_NEW_ACCOUNT`, `WHERE_UNKNOWN_PARTICIPANT` | BAIXA | Natalia | Ramon | T03 | 40 | 03:30 | pronto |
 | T09 | Idempotência com concorrência: `IntegrityError` → rollback → hash → 200 / 422 `RNV001024`; 10x o mesmo `id` → uma análise | ALTA | Ramon (Chaz) | Victoria | T05 | 45 | 04:15 | a fazer |
 | T10 | Motor real no controller: `RiskContext` montado do payload (flow, idades, listed, IP privado), `evaluate`, gravação de `pix_analysis_rule` (todas as regras avaliadas) | ALTA | Ramon (Chaz) | Victoria | T03, T05 | 60 | 04:30 | a fazer |

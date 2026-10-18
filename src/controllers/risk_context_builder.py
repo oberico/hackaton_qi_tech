@@ -1,6 +1,6 @@
 import dataclasses
-import ipaddress
 from datetime import datetime, timedelta, timezone
+import ipaddress
 from typing import List, Optional
 
 from repositories import AccountCounterpartyRepository, AccountDeviceRepository, RiskHistoryRepository
