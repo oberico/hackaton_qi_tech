@@ -10,3 +10,7 @@ class PixTransactionResource:
     def on_post_transaction(self, payload: dict = Body(...)) -> JSONResponse:
         controller = PixTransactionController()
         return JSONResponse(content=controller.create(payload), status_code=status.HTTP_201_CREATED)
+
+    def on_get_transaction(self, transaction_id: str) -> JSONResponse:
+        controller = PixTransactionController()
+        return JSONResponse(content=controller.get(transaction_id), status_code=status.HTTP_200_OK)

@@ -90,6 +90,13 @@ class PixTransactionController(BaseController):
         self.session.commit()
         return self._to_dto(pix_analysis.id)
 
+    def get(self, transaction_id: str) -> dict:
+        pix_transaction = self.transactions.find_by_transaction_id(transaction_id)
+        pix_analysis, status, decision_basis = self.analyses.find_by_pix_transaction_id(pix_transaction.id)
+        return PixAnalysisDto.from_records(
+            pix_analysis, status, decision_basis, self.axes.levels_by_analysis(pix_analysis.id)
+        )
+
     def _record_analysis(self, pix_transaction_id: int, result: EngineResult, context: RiskContext, started_at: float):
         pix_analysis = self.analyses.create(
             pix_transaction_id=pix_transaction_id,

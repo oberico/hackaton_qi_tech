@@ -43,3 +43,13 @@ class PixAnalysisRepository:
                 .where(PixAnalysis.id == pix_analysis_id)
             ).one()
         )
+
+    def find_by_pix_transaction_id(self, pix_transaction_id: int) -> Tuple[PixAnalysis, str, str]:
+        return tuple(
+            self.session.execute(
+                select(PixAnalysis, AnalysisStatus.enumerator, DecisionBasis.enumerator)
+                .join(AnalysisStatus, AnalysisStatus.id == PixAnalysis.status_id)
+                .join(DecisionBasis, DecisionBasis.id == PixAnalysis.decision_basis_id)
+                .where(PixAnalysis.pix_transaction_id == pix_transaction_id)
+            ).one()
+        )
