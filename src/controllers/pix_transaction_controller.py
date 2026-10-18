@@ -5,6 +5,7 @@ from datetime import datetime
 from controllers.base_controller import BaseController
 from controllers.risk_context_builder import build_risk_context, person_type_of, utc_offset_minutes_of
 from dtos import PixAnalysisDto
+from errors import PixTransactionNotFound
 from repositories import (
     AccountHolderRepository,
     AccountRepository,
@@ -92,6 +93,8 @@ class PixTransactionController(BaseController):
 
     def get(self, transaction_id: str) -> dict:
         pix_transaction = self.transactions.find_by_transaction_id(transaction_id)
+        if pix_transaction is None:
+            raise PixTransactionNotFound()
         pix_analysis, status, decision_basis = self.analyses.find_by_pix_transaction_id(pix_transaction.id)
         return PixAnalysisDto.from_records(
             pix_analysis, status, decision_basis, self.axes.levels_by_analysis(pix_analysis.id)
