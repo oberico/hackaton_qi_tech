@@ -1,4 +1,6 @@
-from errors import InvalidCnpj, InvalidCpf
+from datetime import datetime
+
+from errors import AccountOpenedAfterTransaction, InvalidCnpj, InvalidCpf
 from utils.cnpj import is_valid_cnpj
 from utils.cpf import is_valid_cpf
 
@@ -13,5 +15,14 @@ def validate_document_numbers(payload: dict) -> None:
             raise InvalidCpf()
 
 
+def validate_opening_dates(payload: dict) -> None:
+    tx_date = datetime.fromisoformat(payload["transaction_date"])
+    for account_key in ("source_account", "destination_account"):
+        opening_date = datetime.fromisoformat(payload[account_key]["opening_date"])
+        if opening_date > tx_date:
+            raise AccountOpenedAfterTransaction()
+
+
 def validate_payload_semantics(payload: dict) -> None:
     validate_document_numbers(payload)
+    validate_opening_dates(payload)

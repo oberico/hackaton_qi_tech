@@ -43,3 +43,14 @@ class InvalidCnpj(QIException):
         description = "The document number has invalid CNPJ check digits."
         translation = "O CNPJ informado possui dígitos verificadores inválidos."
         super().__init__(title, self.code, http_status, description, translation)
+
+
+class AccountOpenedAfterTransaction(QIException):
+    code = "RNV001040"
+
+    def __init__(self) -> None:
+        title = "Account Opened After Transaction"
+        http_status = 422
+        description = "The account opening date cannot be after the transaction date."
+        translation = "A data de abertura da conta não pode ser posterior à data da transação."
+        super().__init__(title, self.code, http_status, description, translation)
