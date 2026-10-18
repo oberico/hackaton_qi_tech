@@ -80,3 +80,16 @@ def test_test_pix_and_recurrent_beneficiary_parameters_are_declared():
 
 def test_trust_downgrades_the_doubts_it_resolves_first():
     assert policy.TRUST_DOWNGRADE_AXIS_ORDER == ("who", "how", "where")
+
+
+def test_destination_new_account_age_is_its_own_parameter():
+    assert policy.DESTINATION_NEW_ACCOUNT_DAYS == 30
+    assert hasattr(policy, "MATURE_SELF_PIX_MIN_DESTINATION_AGE_DAYS")
+
+
+def test_window_parameters_of_the_where_and_who_rules_are_declared():
+    assert policy.FAN_IN_WINDOW_HOURS == 24
+    assert policy.DESTINATION_REJECTIONS_CRITICAL_PAYERS_24H == 2
+    assert policy.DEVICE_COMPROMISED_DOCUMENTS_TOTAL == 3
+    assert policy.DEVICE_COMPROMISED_DOCUMENTS_24H == 2
+    assert policy.VELOCITY_WINDOW_MINUTES == 10
