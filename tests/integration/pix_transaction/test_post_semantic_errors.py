@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta, timezone
 
-from tests.utils import PayloadGenerator, RequestGenerator
+from tests.utils import PayloadGenerator, RandomGenerator, RequestGenerator
 
 ERROR_FIELDS = {"title", "description", "translation", "code"}
 INVALID_CPF = "111.222.333-44"
@@ -148,3 +148,79 @@ class TestPostSemanticErrors:
         get_status, get_response = RequestGenerator.GET_pix_transaction(payload["id"])
         assert get_status == 404
         assert get_response["code"] == "RNV001039"
+
+    def test_known_account_with_different_holder_returns_409_rnv001044(self):
+        dest_account_number = RandomGenerator.account_number()
+        first_payload = PayloadGenerator.create_challenge_example_payload()
+        first_payload["id"] = RandomGenerator.transaction_id()
+        first_payload["destination_account"]["account_number"] = dest_account_number
+        first_payload["destination_account"]["owner"]["document_number"] = RandomGenerator.cpf()
+
+        status, _ = RequestGenerator.POST_pix_transaction(first_payload)
+        assert status == 201
+
+        conflicting_payload = PayloadGenerator.create_challenge_example_payload()
+        conflicting_payload["id"] = RandomGenerator.transaction_id()
+        conflicting_payload["destination_account"]["participant"] = first_payload["destination_account"]["participant"]
+        conflicting_payload["destination_account"]["branch"] = first_payload["destination_account"]["branch"]
+        conflicting_payload["destination_account"]["account_number"] = dest_account_number
+        conflicting_payload["destination_account"]["owner"]["document_number"] = RandomGenerator.cpf()
+
+        status, response = RequestGenerator.POST_pix_transaction(conflicting_payload)
+
+        assert status == 409
+        assert set(response.keys()) == ERROR_FIELDS
+        assert response["code"] == "RNV001044"
+
+        get_status, get_response = RequestGenerator.GET_pix_transaction(conflicting_payload["id"])
+        assert get_status == 404
+        assert get_response["code"] == "RNV001039"
+
+    def test_known_account_with_different_opening_date_returns_409_rnv001044(self):
+        dest_account_number = RandomGenerator.account_number()
+        first_payload = PayloadGenerator.create_challenge_example_payload()
+        first_payload["id"] = RandomGenerator.transaction_id()
+        first_payload["destination_account"]["account_number"] = dest_account_number
+        first_payload["destination_account"]["opening_date"] = "2023-01-15T08:00:00-03:00"
+
+        status, _ = RequestGenerator.POST_pix_transaction(first_payload)
+        assert status == 201
+
+        conflicting_payload = PayloadGenerator.create_challenge_example_payload()
+        conflicting_payload["id"] = RandomGenerator.transaction_id()
+        conflicting_payload["destination_account"]["participant"] = first_payload["destination_account"]["participant"]
+        conflicting_payload["destination_account"]["branch"] = first_payload["destination_account"]["branch"]
+        conflicting_payload["destination_account"]["account_number"] = dest_account_number
+        conflicting_payload["destination_account"]["owner"]["document_number"] = (
+            first_payload["destination_account"]["owner"]["document_number"]
+        )
+        conflicting_payload["destination_account"]["opening_date"] = "2024-06-01T10:00:00-03:00"
+
+        status, response = RequestGenerator.POST_pix_transaction(conflicting_payload)
+
+        assert status == 409
+        assert set(response.keys()) == ERROR_FIELDS
+        assert response["code"] == "RNV001044"
+
+        get_status, get_response = RequestGenerator.GET_pix_transaction(conflicting_payload["id"])
+        assert get_status == 404
+        assert get_response["code"] == "RNV001039"
+
+    def test_same_cpf_with_different_account_number_returns_201(self):
+        shared_cpf = RandomGenerator.cpf()
+        first_payload = PayloadGenerator.create_challenge_example_payload()
+        first_payload["id"] = RandomGenerator.transaction_id()
+        first_payload["source_account"]["owner"]["document_number"] = shared_cpf
+        first_payload["source_account"]["account_number"] = RandomGenerator.account_number()
+
+        status, _ = RequestGenerator.POST_pix_transaction(first_payload)
+        assert status == 201
+
+        second_payload = PayloadGenerator.create_challenge_example_payload()
+        second_payload["id"] = RandomGenerator.transaction_id()
+        second_payload["source_account"]["owner"]["document_number"] = shared_cpf
+        second_payload["source_account"]["account_number"] = RandomGenerator.account_number()
+
+        status, response = RequestGenerator.POST_pix_transaction(second_payload)
+        assert status == 201
+        assert response["status"] in ("approved", "two_factor_required", "rejected")
