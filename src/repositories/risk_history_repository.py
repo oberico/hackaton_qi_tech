@@ -63,6 +63,7 @@ class RiskHistoryRepository:
                 func.array_agg(aggregate_order_by(PixTransaction.amount_minor, PixTransaction.transaction_date.desc()))
                 .filter(rejected)
                 .label("rejected_amounts_latest_first"),
+                func.array_agg(func.distinct(PixTransaction.channel)).filter(approved).label("known_channels"),
             )
             .select_from(PixTransaction)
             .outerjoin(PixAnalysis, PixAnalysis.pix_transaction_id == PixTransaction.id)
