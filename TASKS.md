@@ -30,6 +30,7 @@ Arquivos de contrato (só o Ramon altera): `database/database.sql`, `src/engine/
 | T16 | Regras HOW/WHO núcleo: `HOW_VELOCITY_EXCEEDED` (por fluxo, suspicious/critical), `WHO_DEVICE_COMPROMISED` (critical) | MÉDIA | Victoria | Ramon | T03 | 50 | 05:30 | a fazer |
 | T17 | README "Como rodar e testar": do clone ao 1º `curl` (com `INTERNAL-TOKEN`), payload do desafio pronto para colar, `pytest`, farm | BAIXA | Natalia | Victoria | T05, T07 | 30 | 05:45 | a fazer |
 | T18 | README: exemplo de ponta a ponta (payload do desafio → `rejected`, com o porquê) + revisão da tabela de Regras contra o `policy.py` | ALTA | Ramon (Hann) | Victoria | T13, T08 | 30 | 05:30 | a fazer |
+| T22 | **P0**: testes de integração do cold start, incluindo evidência de OUTRA entidade (device, destino): 1ª transação sem histórico nunca `rejected` sem evidência em 2 eixos | BAIXA | Natalia | Victoria | T10 | 35 | 06:20 | a fazer |
 | T29 | Freeze: README testado do zero numa máquina limpa, CI verde, `develop` → `main` | ALTA | Ramon (Wren + Hann) | Victoria | todos P0 | 30 | 08:00 | a fazer |
 
 ### P1 — profundidade que a banca avalia
@@ -39,7 +40,6 @@ Arquivos de contrato (só o Ramon altera): `database/database.sql`, `src/engine/
 | T19 | `tests/unit/test_readme_rules.py`: README × `policy.py` (rule_code e valores) | ALTA | Ramon (Chaz) | Victoria | T04, T18 | 30 | 06:15 | a fazer |
 | T20 | Memória do motor: `account_device`/`account_counterparty` (só `approved`, incremento atômico), device unknown → observing → trusted, `TRUST_RECURRENT_BENEFICIARY`, `TRUST_MATURE_SELF_PIX` | ALTA | Ramon (Chaz/Rune) | Victoria | T15 | 60 | 07:00 | a fazer |
 | T21 | Regras HOW/WHO de profundidade: `HOW_ABOVE_CUSTOMER_CEILING` (fases 0/1/2), `HOW_EARLY_MORNING_AMOUNT`, `HOW_RETRY_AFTER_REJECTION` (sondagem), `HOW_TEST_PIX`, `WHO_DEVICE_UNKNOWN` | MÉDIA | Victoria | Ramon | T16, D4 | 60 | 06:30 | a fazer |
-| T22 | Testes de integração obrigatórios do cold start: 1ª transação sem histórico nunca `rejected` sem evidência em 2 eixos | BAIXA | Natalia | Victoria | T10 | 35 | 06:20 | a fazer |
 | T23 | Personas + `scripts/farm.py` + relatório de taxas (2FA e rejeição) por `policy_version` | MÉDIA | Victoria | Ramon | T15, T21 | 60 | 07:30 | a fazer |
 | T24 | README: `## Modelo de dados`, `## Opções descartadas`, `## Limitações conhecidas` | BAIXA | Natalia | Victoria | T17 | 30 | 06:50 | a fazer |
 
@@ -126,6 +126,14 @@ Dependem dela: todos (T02 e T06 destravam a API).
 - T13 é teste de aceitação: nasce vermelho e entra com `xfail(strict=True)`; o T10 remove o marcador.
 - Tarefas sem ciclo de teste, por natureza: T17 e T24 (documentação) e a infra do T02. Validação delas é rodar do zero.
 - Fila da Natalia mudou: T13 primeiro (não depende de nada e já dá para escrever o red), depois T08 (quando o T03 entrar), T11, T14, T17. O T06 saiu do nome dela.
+
+## Decisões de 03:10 (respostas do Ramon às dúvidas do T03)
+- Consultas devolvem só o histórico anterior; o motor soma o `amount` do Pix corrente.
+- Rebaixamento por confiança em ordem **who → how → where** (a confiança rebaixa primeiro a dúvida que ela resolve; crítico nunca é rebaixado).
+- Piso de device: dois gatilhos (Pix > R$ 200 ou soma do dia > R$ 1.000 incluindo o Pix; por pagador PF e device, dia local, approved + 2FA). Piso é mínimo, nunca rejeita sozinho; rejeição de outros eixos prevalece.
+- Pix de teste: até R$ 10,00 para destino sem relação aprovada, seguido em até 15 min de Pix ao mesmo destino ≥ R$ 200 e ≥ 20× o valor do teste → how suspicious; não dispara se o destino for recorrente.
+- Destinatário recorrente: 2+ Pix aprovados e o primeiro aprovado há mais de 24h (`account_counterparty`).
+- T22 (cold start com evidência de outra entidade) sobe para P0.
 
 ## Mudanças de 02:30 (revisão do tech lead + índices)
 - Schema: `account_holder` (titular separado da conta), `pix_analysis_axis` (1 linha por eixo), `decision_basis` como lookup, `BIGSERIAL`/`BIGINT` nas tabelas de volume, constraints nomeadas.
