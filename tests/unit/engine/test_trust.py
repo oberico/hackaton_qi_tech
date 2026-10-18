@@ -26,7 +26,21 @@ def test_signal_downgrades_a_single_suspicious_axis_to_ok():
 def test_signal_downgrades_only_one_of_two_suspicious_axes():
     result, applied = trust.downgrade(levels(how=SUSPICIOUS, where=SUSPICIOUS), [SIGNAL])
 
-    assert result == levels(how=SUSPICIOUS)
+    assert result == levels(where=SUSPICIOUS)
+    assert applied == [SIGNAL]
+
+
+def test_who_is_downgraded_before_where():
+    result, applied = trust.downgrade(levels(who=SUSPICIOUS, where=SUSPICIOUS), [SIGNAL])
+
+    assert result == levels(where=SUSPICIOUS)
+    assert applied == [SIGNAL]
+
+
+def test_where_alone_is_downgraded():
+    result, applied = trust.downgrade(levels(where=SUSPICIOUS), [SIGNAL])
+
+    assert result == levels()
     assert applied == [SIGNAL]
 
 
@@ -50,7 +64,7 @@ def test_critical_axis_is_kept_while_a_suspicious_one_is_still_downgraded():
 def test_two_signals_still_downgrade_a_single_axis():
     result, applied = trust.downgrade(levels(how=SUSPICIOUS, where=SUSPICIOUS), [SIGNAL, "TRUST_MATURE_SELF_PIX"])
 
-    assert result == levels(how=SUSPICIOUS)
+    assert result == levels(where=SUSPICIOUS)
     assert applied == [SIGNAL]
 
 
@@ -89,9 +103,9 @@ def test_downgrade_of_one_of_two_suspicious_axes_turns_rejection_into_two_factor
 
     result = evaluate(night_pix(make_context, local_datetime))
 
-    assert result.where.level == OK
-    assert [reason.code for reason in result.where.rules] == ["WHERE_STUB"]
-    assert result.how.level == SUSPICIOUS
+    assert result.how.level == OK
+    assert [reason.code for reason in result.how.rules] == ["HOW_NIGHT_LIMIT_EXCEEDED"]
+    assert result.where.level == SUSPICIOUS
     assert result.decision == Decision.TWO_FACTOR_REQUIRED
     assert result.decision_basis == DecisionBasis.TRUST_DOWNGRADE
     assert result.trust_signals == [SIGNAL]
