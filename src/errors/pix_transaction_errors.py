@@ -54,3 +54,14 @@ class AccountOpenedAfterTransaction(QIException):
         description = "The account opening date cannot be after the transaction date."
         translation = "A data de abertura da conta não pode ser posterior à data da transação."
         super().__init__(title, self.code, http_status, description, translation)
+
+
+class TransactionDateInFuture(QIException):
+    code = "RNV001041"
+
+    def __init__(self) -> None:
+        title = "Transaction Date In Future"
+        http_status = 422
+        description = "The transaction date cannot be more than 5 minutes in the future."
+        translation = "A data da transação não pode estar mais de 5 minutos no futuro."
+        super().__init__(title, self.code, http_status, description, translation)

@@ -1,8 +1,15 @@
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
-from errors import AccountOpenedAfterTransaction, InvalidCnpj, InvalidCpf
+from errors import (
+    AccountOpenedAfterTransaction,
+    InvalidCnpj,
+    InvalidCpf,
+    TransactionDateInFuture,
+)
 from utils.cnpj import is_valid_cnpj
 from utils.cpf import is_valid_cpf
+
+FUTURE_TOLERANCE_MINUTES = 5
 
 
 def validate_document_numbers(payload: dict) -> None:
@@ -23,6 +30,14 @@ def validate_opening_dates(payload: dict) -> None:
             raise AccountOpenedAfterTransaction()
 
 
+def validate_transaction_date_not_in_future(payload: dict) -> None:
+    tx_date = datetime.fromisoformat(payload["transaction_date"])
+    now = datetime.now(timezone.utc)
+    if tx_date > now + timedelta(minutes=FUTURE_TOLERANCE_MINUTES):
+        raise TransactionDateInFuture()
+
+
 def validate_payload_semantics(payload: dict) -> None:
     validate_document_numbers(payload)
     validate_opening_dates(payload)
+    validate_transaction_date_not_in_future(payload)

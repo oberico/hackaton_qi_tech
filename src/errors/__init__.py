@@ -16,6 +16,7 @@ from errors.pix_transaction_errors import (
     InvalidCpf,
     PixIdReusedWithDifferentPayload,
     PixTransactionNotFound,
+    TransactionDateInFuture,
 )
 
 __all__ = [
@@ -33,5 +34,6 @@ __all__ = [
     "PixIdReusedWithDifferentPayload",
     "PixTransactionNotFound",
     "ServiceBusy",
+    "TransactionDateInFuture",
     "ValueOutOfRange",
 ]
