@@ -5,6 +5,7 @@ from src.engine.risk_context import EvaluatedRule, RiskContext, RiskLevel
 from src.engine.rules import fired, not_fired
 
 AXIS = "where"
+AGE_DECIMALS = 2
 
 DESTINATION_NEW_ACCOUNT_CODE = "WHERE_DESTINATION_NEW_ACCOUNT"
 DESTINATION_NEW_ACCOUNT_DESCRIPTION = "Destination account opened less than 30 days ago."
@@ -16,7 +17,7 @@ UNKNOWN_PARTICIPANT_TRANSLATION = "Participante de destino (ISPB) fora da lista 
 
 
 def destination_new_account(context: RiskContext) -> EvaluatedRule:
-    observed = {"destination_account_age_days": context.transaction.destination_account_age_days}
+    observed = {"destination_account_age_days": round(context.transaction.destination_account_age_days, AGE_DECIMALS)}
     threshold = {"destination_account_age_days": policy.DESTINATION_NEW_ACCOUNT_DAYS}
     if context.transaction.destination_account_age_days < policy.DESTINATION_NEW_ACCOUNT_DAYS:
         return fired(

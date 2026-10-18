@@ -91,6 +91,10 @@ WHERE_BORDERS = {
         "WHERE_DESTINATION_NEW_ACCOUNT", {"destination_account_age_days": 29}, True,
         {"destination_account_age_days": 29}, {"destination_account_age_days": 30},
     ),
+    "destination_fractional_age_is_reported_with_two_decimals": (
+        "WHERE_DESTINATION_NEW_ACCOUNT", {"destination_account_age_days": 7.552083333333333}, True,
+        {"destination_account_age_days": 7.55}, {"destination_account_age_days": 30},
+    ),
     "destination_exactly_thirty_days_old": (
         "WHERE_DESTINATION_NEW_ACCOUNT", {"destination_account_age_days": 30}, False,
         {"destination_account_age_days": 30}, {"destination_account_age_days": 30},

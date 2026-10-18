@@ -56,6 +56,7 @@ Três propostas avaliadas: (A) uma tabela desnormalizada + análises + hits; (B)
 | Análise do Pix | `pix_transaction_id` | `uq_pix_analysis_pix_transaction` | Index Scan |
 | Eixos e regras da análise | `pix_analysis_id` | `uq_pix_analysis_axis`, `uq_pix_analysis_rule` | Index Scan |
 | Análise pelo id interno (leitura logo após gravar, com status e base da decisão) | `pix_analysis.id` | `pix_analysis_pkey` + `analysis_status_pkey` + `decision_basis_pkey` | Index Scan, 0,09 ms; lookups de 3 a 6 linhas |
+| Gravação das regras avaliadas (INSERT em `pix_analysis_rule`, ids de eixo, resultado e nível por subconsulta de enumerador) | `enumerator` nos lookups | `rule_axis_enumerator_key`, `rule_outcome_enumerator_key`, `risk_level_enumerator_key` | 3 Index Scans de 1 linha (0,004 a 0,007 ms cada); INSERT total 0,5 ms com as 4 FKs |
 | Velocity, somas e teto do pagador | conta de origem + janela | `idx_pix_transaction_source_date` INCLUDE (`amount_minor`, `destination_account_id`, `device_id`, `channel`) | Index Only Scan, 0 heap, 0,05 ms |
 | Fan-in do destino | conta de destino + janela | `idx_pix_transaction_destination_date` INCLUDE (`source_account_id`) | Index Only Scan, 0 heap, 0,04 ms |
 | Rejeições no destino | conta de destino + janela, status da análise | `idx_pix_transaction_destination_date` + `uq_pix_analysis_pix_transaction` | Nested Loop de Index Scans, 0,04 ms |

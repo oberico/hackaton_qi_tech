@@ -4,3 +4,4 @@ from repositories.account_repository import AccountRepository
 from repositories.pix_transaction_repository import PixTransactionRepository
 from repositories.pix_analysis_repository import PixAnalysisRepository
 from repositories.pix_analysis_axis_repository import PixAnalysisAxisRepository
+from repositories.pix_analysis_rule_repository import PixAnalysisRuleRepository

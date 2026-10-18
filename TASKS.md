@@ -120,6 +120,13 @@ Primeiro passo (01:15): branch `feat/T02-scaffold`, copiar a infraestrutura do `
 Depende de: Ramon (T03 molde para T08/T14), Victoria (T05/T07 para T11, T13, T17).
 Dependem dela: todos (T02 e T06 destravam a API).
 
+## Decisões de 05:30 (follow-ups do T10)
+- `ip_is_private` = RFC 1918 + loopback + link-local (faixas de documentação não contam); deixar claro no README quando o agravante entrar (T25).
+- IP inválido: `ip_is_private = False` no motor; o `422 RNV001043` é do T12.
+- `observed` da idade do destino sai com 2 casas decimais (feito).
+- `opening_date` posterior ao Pix: `422 RNV001040` no T12 (barrar antes do motor).
+- p95 do teto do cliente calculado no motor (lista `approved_amounts_90d`, interpolação linear); não vai SQL `percentile_cont`.
+
 ## Refactor de 05:00 (camadas adjacentes + testes no padrão do base service)
 - Branch `refactor/layers-and-tests-base-service`: resource com `@SchemaHandler.validate` e `XController()`; `BaseController` com o contexto; repositories com `Context`; controller sem `sqlalchemy`. `tests/architecture/` garante isso.
 - Testes: integração em `class Test<Operação>` com o harness de `tests/utils/` (`RequestGenerator`, `PayloadGenerator`, `ObjectGenerator`, `RandomGenerator`); motor em `tests/engine/` só com matriz e bordas em tabelas. `tests/unit/` deixou de existir.

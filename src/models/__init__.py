@@ -10,3 +10,5 @@ from models.account import Account
 from models.pix_transaction import PixTransaction
 from models.pix_analysis import PixAnalysis
 from models.pix_analysis_axis import PixAnalysisAxis
+from models.rule_outcome import RuleOutcome
+from models.pix_analysis_rule import PixAnalysisRule
