@@ -66,3 +66,11 @@ coverage.xml
 .ruff_cache/
 reports/
 payload.json
+
+# --- Anotações locais do time (não vão para o repositório) ---
+.local/
+*.pyc
+
+# --- Python / macOS ---
+__pycache__/
+*.pyc
