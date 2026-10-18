@@ -10,12 +10,12 @@ def destination_new_account_stub():
     return fired("WHERE_STUB", "where", RiskLevel.SUSPICIOUS, {"destination_account_age_days": 7}, {"days": 30}, "stub", "stub")
 
 
-def challenge_payload_context(make_context, local_datetime):
+def challenge_payload_context(make_context, local_datetime, destination_account_age_days=400):
     return make_context(
         transaction={
             "amount": 150000,
             "transaction_date": local_datetime(22, 15),
-            "destination_account_age_days": 7,
+            "destination_account_age_days": destination_account_age_days,
         },
     )
 
@@ -47,7 +47,7 @@ def test_first_pix_with_a_single_payload_signal_is_never_rejected(make_context, 
 def test_first_pix_with_payload_evidence_in_two_axes_is_rejected(make_context, local_datetime, monkeypatch):
     monkeypatch.setattr(where, "analyze", lambda context: [destination_new_account_stub()])
 
-    result = evaluate(challenge_payload_context(make_context, local_datetime))
+    result = evaluate(challenge_payload_context(make_context, local_datetime, destination_account_age_days=7))
 
     assert result.decision == Decision.REJECTED
     assert result.decision_basis == DecisionBasis.TWO_SUSPICIOUS_AXES
