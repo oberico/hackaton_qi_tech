@@ -71,7 +71,11 @@ payload.json
 .local/
 *.pyc
 
-# --- Python / macOS ---
-__pycache__/
-*.pyc
-
+# --- Ferramentas de IA / Documentos internos de trabalho ---
+.claude/
+CLAUDE.md
+GEMINI.md
+.local-log*.md
+TASKS.md
+docs/tarefas/
+docs/duvidas-decisoes.md
