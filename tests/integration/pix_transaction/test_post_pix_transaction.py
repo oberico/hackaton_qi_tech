@@ -35,3 +35,19 @@ class TestPostPixTransaction:
         assert set(metadata.keys()) == METADATA_KEYS
         assert set(metadata["axes"].keys()) == AXES
         assert all(isinstance(metadata[key], list) for key in ("reasons", "floors", "trust"))
+
+    def test_flow_is_pf_pf_when_both_owners_are_individuals(self, pix):
+        payload = PayloadGenerator.challenge_example(id=RandomGenerator.uuid())
+        payload["destination_account"]["owner"]["document_number"] = RandomGenerator.cpf()
+
+        _, response = pix.post_transaction(payload)
+
+        assert response["metadata"]["flow"] == "pf_pf"
+
+    def test_flow_is_pf_pj_when_destination_owner_is_a_company(self, pix):
+        payload = PayloadGenerator.challenge_example(id=RandomGenerator.uuid())
+        payload["destination_account"]["owner"]["document_number"] = RandomGenerator.cnpj()
+
+        _, response = pix.post_transaction(payload)
+
+        assert response["metadata"]["flow"] == "pf_pj"
