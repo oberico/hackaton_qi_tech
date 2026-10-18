@@ -162,6 +162,30 @@ def test_destination_fan_in_border(flow, destination_age_days, payers, fires, th
     assert (result.decision, result.decision_basis) == (REJECTED_BY_CRITICAL_AXIS if fires else expected_without_fan_in(destination_age_days))
 
 
+REJECTIONS_BORDERS = {
+    "no_rejections": (0, False),
+    "one_rejecting_payer": (1, False),
+    "two_rejecting_payers": (2, True),
+    "many_rejecting_payers": (5, True),
+}
+
+
+@pytest.mark.parametrize("rejections, fires", REJECTIONS_BORDERS.values(), ids=REJECTIONS_BORDERS.keys())
+def test_destination_rejections_border(rejections, fires):
+    result = evaluate(make_context(destination={"rejections_from_distinct_payers_24h": rejections}))
+
+    rule = rule_of(result, "WHERE_DESTINATION_REJECTIONS")
+    assert (rule.outcome, rule.observed, rule.threshold) == (
+        RuleOutcome.FIRED if fires else RuleOutcome.NOT_FIRED,
+        {"rejections_from_distinct_payers_24h": rejections},
+        {"rejections_from_distinct_payers_24h": 2},
+    )
+    assert (rule.axis, rule.level) == ("where", RiskLevel.CRITICAL if fires else None)
+    assert rule.description and rule.translation
+    assert [reason.code for reason in result.where.rules] == (["WHERE_DESTINATION_REJECTIONS"] if fires else [])
+    assert (result.decision, result.decision_basis) == (REJECTED_BY_CRITICAL_AXIS if fires else APPROVED)
+
+
 MATURITY_BORDERS = {
     "no_approved_pix": (0, 0, 0),
     "no_approved_pix_with_old_relationship": (0, 400, 0),
