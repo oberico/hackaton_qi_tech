@@ -89,16 +89,13 @@ class PixTransactionController(BaseController):
         result = evaluate(context)
         pix_analysis = self._record_analysis(pix_transaction.id, result, context, started_at)
         self.session.commit()
-        return self._to_dto(pix_analysis.id)
+        return self._to_dto(self.analyses.find_by_id(pix_analysis.id))
 
     def get(self, transaction_id: str) -> dict:
         pix_transaction = self.transactions.find_by_transaction_id(transaction_id)
         if pix_transaction is None:
             raise PixTransactionNotFound()
-        pix_analysis, status, decision_basis = self.analyses.find_by_pix_transaction_id(pix_transaction.id)
-        return PixAnalysisDto.from_records(
-            pix_analysis, status, decision_basis, self.axes.levels_by_analysis(pix_analysis.id)
-        )
+        return self._to_dto(self.analyses.find_by_pix_transaction_id(pix_transaction.id))
 
     def _record_analysis(self, pix_transaction_id: int, result: EngineResult, context: RiskContext, started_at: float):
         pix_analysis = self.analyses.create(
@@ -117,10 +114,10 @@ class PixTransactionController(BaseController):
         self.rules.create_all(pix_analysis.id, result.evaluated_rules)
         return pix_analysis
 
-    def _to_dto(self, pix_analysis_id: int) -> dict:
-        pix_analysis, status, decision_basis = self.analyses.find_by_id(pix_analysis_id)
+    def _to_dto(self, analysis_record: tuple) -> dict:
+        pix_analysis, status, decision_basis = analysis_record
         return PixAnalysisDto.from_records(
-            pix_analysis, status, decision_basis, self.axes.levels_by_analysis(pix_analysis_id)
+            pix_analysis, status, decision_basis, self.axes.levels_by_analysis(pix_analysis.id)
         )
 
     def _upsert_account(self, ispb: str, account_data: dict):
