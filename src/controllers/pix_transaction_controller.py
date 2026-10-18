@@ -11,6 +11,7 @@ from engine.risk_context import AxisResult, Decision, DecisionBasis, EngineResul
 from repositories import (
     AccountHolderRepository,
     AccountRepository,
+    PixAnalysisAxisRepository,
     PixAnalysisRepository,
     PixParticipantRepository,
     PixTransactionRepository,
@@ -37,6 +38,28 @@ def _fake_engine_result() -> EngineResult:
     )
 
 
+def _features(result: EngineResult) -> dict:
+    axes = (result.who, result.how, result.where)
+    return {
+        "flow": None,
+        "reasons": [
+            {
+                "code": rule.code,
+                "axis": rule.axis,
+                "level": rule.level.value,
+                "observed": rule.observed,
+                "threshold": rule.threshold,
+                "description": rule.description,
+                "translation": rule.translation,
+            }
+            for axis in axes
+            for rule in axis.rules
+        ],
+        "floors": result.floors,
+        "trust": result.trust_signals,
+    }
+
+
 def _person_type(document_number: str) -> str:
     return "company" if "/" in document_number else "individual"
 
@@ -53,6 +76,7 @@ class PixTransactionController:
         self.accounts = AccountRepository(session)
         self.transactions = PixTransactionRepository(session)
         self.analyses = PixAnalysisRepository(session)
+        self.axes = PixAnalysisAxisRepository(session)
 
     def create(self, payload: dict) -> dict:
         started_at = time.perf_counter()
@@ -88,11 +112,21 @@ class PixTransactionController:
             decision_basis=result.decision_basis.value,
             policy_version=result.policy_version,
             payer_maturity_phase=result.maturity_phase,
-            features={},
+            features=_features(result),
             latency_ms=int((time.perf_counter() - started_at) * 1000),
         )
+        self.axes.create_all(
+            pix_analysis.id,
+            {"who": result.who.level.value, "how": result.how.level.value, "where": result.where.level.value},
+        )
         self.session.commit()
-        return PixAnalysisDto.from_analysis(pix_analysis, result.decision.value)
+        return self._to_dto(pix_analysis.id)
+
+    def _to_dto(self, pix_analysis_id: int) -> dict:
+        pix_analysis, status, decision_basis = self.analyses.find_by_id(pix_analysis_id)
+        return PixAnalysisDto.from_records(
+            pix_analysis, status, decision_basis, self.axes.levels_by_analysis(pix_analysis_id)
+        )
 
     def _upsert_account(self, ispb: str, account_data: dict):
         participant = self.participants.find_by_ispb(ispb)

@@ -1,3 +1,5 @@
+from typing import Tuple
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -31,3 +33,13 @@ class PixAnalysisRepository:
         self.session.flush()
         self.session.refresh(pix_analysis)
         return pix_analysis
+
+    def find_by_id(self, pix_analysis_id: int) -> Tuple[PixAnalysis, str, str]:
+        return tuple(
+            self.session.execute(
+                select(PixAnalysis, AnalysisStatus.enumerator, DecisionBasis.enumerator)
+                .join(AnalysisStatus, AnalysisStatus.id == PixAnalysis.status_id)
+                .join(DecisionBasis, DecisionBasis.id == PixAnalysis.decision_basis_id)
+                .where(PixAnalysis.id == pix_analysis_id)
+            ).one()
+        )
