@@ -39,11 +39,14 @@ def unlisted_destination() -> dict:
     }
 
 
-def seed_payer_attempts(payer_document: str, account_number: str, start: datetime, count: int, interval: timedelta) -> None:
+def seed_payer_attempts(
+    payer_document: str, account_number: str, start: datetime, count: int, interval: timedelta, device_id: str = None
+) -> None:
     for index in range(count):
         ObjectGenerator.create_pix_transaction(
             payer_document=payer_document,
             source_account_number=account_number,
+            device_id=device_id or RandomGenerator.device_id(),
             amount=SMALL_AMOUNT,
             transaction_date=start + interval * index,
         )
@@ -52,12 +55,14 @@ def seed_payer_attempts(payer_document: str, account_number: str, start: datetim
 class TestPixTransactionHistoryWindows:
     def test_third_attempt_in_ten_minutes_is_suspicious_velocity_and_requires_two_factor(self):
         payer_document, account_number = RandomGenerator.cpf(), RandomGenerator.account_number()
+        device_id = RandomGenerator.device_id()
         start = days_ago_at(3, 14)
-        seed_payer_attempts(payer_document, account_number, start, 2, timedelta(minutes=3))
+        seed_payer_attempts(payer_document, account_number, start, 2, timedelta(minutes=3), device_id=device_id)
 
         response = post(
             payer_document=payer_document,
             source_account_number=account_number,
+            device_id=device_id,
             amount=SMALL_AMOUNT,
             transaction_date=start + timedelta(minutes=6),
         )
@@ -87,12 +92,14 @@ class TestPixTransactionHistoryWindows:
 
     def test_attempts_older_than_ten_minutes_do_not_count_for_velocity(self):
         payer_document, account_number = RandomGenerator.cpf(), RandomGenerator.account_number()
+        device_id = RandomGenerator.device_id()
         start = days_ago_at(3, 14)
-        seed_payer_attempts(payer_document, account_number, start, 2, timedelta(minutes=1))
+        seed_payer_attempts(payer_document, account_number, start, 2, timedelta(minutes=1), device_id=device_id)
 
         response = post(
             payer_document=payer_document,
             source_account_number=account_number,
+            device_id=device_id,
             amount=SMALL_AMOUNT,
             transaction_date=start + timedelta(minutes=12),
         )
@@ -373,12 +380,14 @@ class TestPixTransactionHistoryWindows:
 
     def test_payer_with_five_approved_pix_over_thirty_days_reaches_maturity_phase_two(self):
         payer_document, account_number = RandomGenerator.cpf(), RandomGenerator.account_number()
+        device_id = RandomGenerator.device_id()
         start = days_ago_at(50, 11)
-        seed_payer_attempts(payer_document, account_number, start, 5, timedelta(days=8))
+        seed_payer_attempts(payer_document, account_number, start, 5, timedelta(days=8), device_id=device_id)
 
         response = post(
             payer_document=payer_document,
             source_account_number=account_number,
+            device_id=device_id,
             amount=SMALL_AMOUNT,
             transaction_date=start + timedelta(days=40),
         )
