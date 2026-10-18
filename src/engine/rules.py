@@ -5,11 +5,26 @@ from src.engine.risk_context import AxisResult, EvaluatedRule, RiskLevel, RuleOu
 LEVEL_ORDER = {RiskLevel.OK: 0, RiskLevel.SUSPICIOUS: 1, RiskLevel.CRITICAL: 2}
 
 
-def fired(code: str, axis: str, level: RiskLevel, observed: Dict[str, Any], threshold: Dict[str, Any], description: str, translation: str) -> EvaluatedRule:
+def fired(
+    code: str,
+    axis: str,
+    level: Optional[RiskLevel],
+    observed: Dict[str, Any],
+    threshold: Dict[str, Any],
+    description: str,
+    translation: str,
+) -> EvaluatedRule:
     return EvaluatedRule(code, axis, RuleOutcome.FIRED, level, observed, threshold, description, translation)
 
 
-def not_fired(code: str, axis: str, description: str, translation: str, observed: Optional[Dict[str, Any]] = None, threshold: Optional[Dict[str, Any]] = None) -> EvaluatedRule:
+def not_fired(
+    code: str,
+    axis: str,
+    description: str,
+    translation: str,
+    observed: Optional[Dict[str, Any]] = None,
+    threshold: Optional[Dict[str, Any]] = None,
+) -> EvaluatedRule:
     return EvaluatedRule(code, axis, RuleOutcome.NOT_FIRED, None, observed, threshold, description, translation)
 
 

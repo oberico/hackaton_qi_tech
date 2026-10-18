@@ -1,7 +1,6 @@
 from typing import List
 
-from src.engine import policy
-from src.engine.clock import is_within_hours, local_datetime
+from src.engine import night, policy
 from src.engine.risk_context import DeviceTrust, EvaluatedRule, RiskContext
 from src.engine.rules import fired, not_fired
 
@@ -32,14 +31,12 @@ def unregistered_device(context: RiskContext) -> EvaluatedRule:
 
 
 def night_limit(context: RiskContext) -> EvaluatedRule:
-    limit = policy.NIGHT_LIMIT_MINOR[context.transaction.flow]
-    in_night = is_within_hours(local_datetime(context).hour, policy.NIGHT_START_HOUR, policy.NIGHT_END_HOUR)
-    if limit is None or context.transaction.same_owner or not in_night:
+    night_amount = night.night_amount(context)
+    if night_amount is None:
         return not_fired(NIGHT_LIMIT_CODE, AXIS, NIGHT_LIMIT_DESCRIPTION, NIGHT_LIMIT_TRANSLATION)
-    night_amount = context.payer.night_amount_to_individuals + context.transaction.amount
     observed = {"night_amount": night_amount}
-    threshold = {"night_amount": limit}
-    if night_amount > limit:
+    threshold = {"night_amount": night.night_limit(context)}
+    if night_amount > threshold["night_amount"]:
         return fired(NIGHT_LIMIT_CODE, AXIS, None, observed, threshold, NIGHT_LIMIT_DESCRIPTION, NIGHT_LIMIT_TRANSLATION)
     return not_fired(NIGHT_LIMIT_CODE, AXIS, NIGHT_LIMIT_DESCRIPTION, NIGHT_LIMIT_TRANSLATION, observed, threshold)
 
