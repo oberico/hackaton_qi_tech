@@ -18,26 +18,12 @@ Não perguntamos "quão arriscado é este Pix". Perguntamos **qual é a dúvida*
 
 Por isso o `where` pesa mais: o 2FA confirma quem paga, não quem recebe.
 
-### O fluxo de um POST
+### Como o motor está estruturado
 
-1. **Schema (JSON Schema):** valida a forma do payload. Falha vira `400`.
-2. **Validação de sentido:** dígito verificador de CPF/CNPJ, `opening_date` não posterior a `transaction_date`, `transaction_date` até 5 minutos no futuro, origem diferente do destino, conta conhecida com outro titular. Falha vira `422` (ou `409` para conta com outro titular). *(Em implementação: T12.)*
-3. **Upsert das contas:** a origem usa o nosso participante (`OWN_PARTICIPANT`). ISPB fora da lista do STR não é erro: o participante é criado com `listed = false` e vira o sinal `WHERE_UNKNOWN_PARTICIPANT`. Vem antes do Pix porque o Pix referencia as duas contas por chave estrangeira.
-4. **Insert do Pix:** é o que garante a idempotência (`UNIQUE` em `transaction_id`). O mesmo `id` com o mesmo payload devolve a análise já feita (`200`); o mesmo `id` com payload diferente é `422 RNV001024`.
-5. **Montagem do contexto:** os repositories consultam o histórico e montam o `RiskContext`.
-6. **Decisão:** `engine.evaluate(context)` devolve o `EngineResult`.
-7. **Gravação:** a análise, todas as regras avaliadas (`fired`, `not_fired` ou `unavailable`) e a memória do motor (só se `approved`; em implementação, T20), em uma transação.
-8. **Resposta:** `201 {key, status, metadata}`.
-
-Se o connector externo de IP falhar, o motor decide sem ele e registra isso em `metadata` (`ip_country: "unavailable"`).
-
-### O motor é uma função pura
-
-`evaluate(RiskContext) -> EngineResult` não acessa banco, não chama HTTP, não lê o relógio e não loga. Só o controller o chama. Isso permite testar cada regra e cada célula da matriz montando um `RiskContext` à mão, sem infraestrutura, e versionar a política separada do caminho de I/O.
-
-### Por que a política vive em código e não no banco
-
-Os parâmetros ficam em `src/engine/policy.py`, indexados por fluxo (`pf_pf`, `pf_pj`, `pj_pf`, `pj_pj`), sem número mágico nas regras. Mudar número no banco sem deploy é conveniente, mas obrigaria a versionar o conteúdo para reproduzir decisões antigas. Em código, o git e a `policy_version` fazem isso: toda mudança de parâmetro sobe `POLICY_VERSION`, e cada análise grava a versão e os limiares que usou.
+- **Uma função pura no centro.** `evaluate(RiskContext) -> EngineResult`, em `src/engine/`, não acessa banco, não chama HTTP, não lê o relógio e não loga. Cada regra e cada célula da matriz é testada montando o contexto à mão, sem infraestrutura.
+- **Um analisador por eixo.** `who`, `how` e `where` avaliam suas regras, e cada eixo sai `ok`, `suspicious` ou `critical`. Em volta deles ficam os pisos regulatórios e os sinais de confiança.
+- **I/O só fora do motor.** O resource valida a forma do payload (JSON Schema, `400`). O controller valida o sentido (`422` ou `409`), grava titulares, contas e o Pix (o `UNIQUE` em `transaction_id` garante a idempotência), monta o `RiskContext` só com histórico anterior ao Pix, chama o motor e grava, numa única transação, a análise, todas as regras avaliadas e, se o Pix foi `approved`, a memória do motor. ISPB de destino fora da lista do STR não é erro: vira o sinal `WHERE_UNKNOWN_PARTICIPANT`.
+- **Política em código, versionada.** Os parâmetros ficam em `src/engine/policy.py`, indexados por fluxo (`pf_pf`, `pf_pj`, `pj_pf`, `pj_pj`), sem número mágico nas regras. Toda mudança de parâmetro sobe `POLICY_VERSION`, e cada análise grava a versão e os limiares que usou, então qualquer decisão antiga pode ser reproduzida.
 
 ## Regras
 
@@ -57,15 +43,41 @@ Uma linha por regra que existe no código. **Regra** é o `rule_code` entre cras
 | `HOW_ABOVE_CUSTOMER_CEILING` | Eixo `how`, `suspicious`. Dispara quando o valor do Pix fica estritamente acima do **teto do cliente**. O teto mistura o histórico do pagador com um teto de referência: `teto = (n × teto_hist + K × teto_ref) / (n + K)`, com `n` = Pix aprovados do pagador nos últimos 90 dias e `K` = peso do teto de referência. `teto_hist` = `HISTORY_MARGIN` × percentil 95 (interpolação linear entre os valores ordenados) dos valores aprovados. `teto_ref` depende do pagador: PF com conta de origem aberta há menos de 90 dias, PF com 90 dias ou mais, ou PJ. Sem Pix aprovado (fase 0 do pagador), `n` = 0 e vale só o `teto_ref`: a ausência de histórico nunca é evidência, então a 1ª transação só dispara se passar do teto de referência. Conforme `n` cresce o teto passa a seguir o comportamento do próprio cliente (fases 1 e 2). O teto é truncado para centavos inteiros. Vale para todos os fluxos. | `REFERENCE_CEILING_NEW_ACCOUNT_DAYS` = 90 dias<br>`REFERENCE_CEILING_MINOR.individual_new_account` = R$ 1.000<br>`REFERENCE_CEILING_MINOR.individual` = R$ 3.000<br>`REFERENCE_CEILING_MINOR.company` = R$ 20.000<br>`HISTORY_WINDOW_DAYS` = 90 dias<br>`HISTORY_PERCENTILE` = 0,95<br>`HISTORY_MARGIN` = 1,5<br>`SHRINKAGE_K` = 5 | `REFERENCE_CEILING_MINOR`: escolha de design, sem norma por trás (o R$ 1.000 não vem de resolução do BCB). É um ponto de partida conservador para quem ainda não tem histórico: conta de PF com menos de 90 dias tem teto menor porque a conta nova é o perfil de conta de passagem; PF com 90 dias ou mais tem R$ 3.000, acima do Pix de R$ 1.500 do payload do desafio, para a 1ª transação de um cliente comum não ser tocada; PJ tem R$ 20.000 porque pagamentos de empresa são maiores por natureza. Não foi calibrado ainda no simulador.<br>`REFERENCE_CEILING_NEW_ACCOUNT_DAYS`: escolha de design; 90 dias é a janela de histórico da política, então uma conta que já completou a janela é tratada como estabelecida.<br>`HISTORY_WINDOW_DAYS`: 90 dias é o limite de consulta no caminho síncrono (índice + intervalo de data), e cobre ciclos mensais de gasto.<br>`HISTORY_PERCENTILE`: o p95 ignora o valor atípico raro do próprio cliente sem deixar o teto subir até o maior Pix já feito.<br>`HISTORY_MARGIN`: 1,5 dá folga de 50% sobre o p95 para que variação normal de gasto não dispare; escolha de design, sem calibração ainda.<br>`SHRINKAGE_K`: 5 equivale a dizer que o teto de referência pesa como 5 Pix aprovados; com poucos Pix o teto ainda é quase o de referência, com 5 aprovados já pesa meio a meio e depois o histórico passa a dominar. É o mesmo 5 que define a fase 2 do pagador (5 aprovados e 30 dias). Dúvida de comportamento (`how`) que o 2FA resolve, por isso `suspicious` e nunca `critical`. |
 | `HOW_EARLY_MORNING_AMOUNT` | Eixo `how`, `suspicious`. Dispara quando o Pix é feito de madrugada no horário local do pagador (00:00 a 05:59, a hora local vem de `transaction_date` + `utc_offset_minutes`) e o valor está **estritamente acima** do mínimo e **até** o máximo da faixa (R$ 200,00 exatos não disparam; R$ 1.000,00 exatos disparam). Acima do máximo a regra não atua: PF→PF entre titulares diferentes já cai no limite noturno (`HOW_NIGHT_LIMIT_EXCEEDED`). Vale para todos os fluxos e não depende de histórico do pagador (o sinal está no próprio Pix). | `EARLY_MORNING_START_HOUR` = 0h<br>`EARLY_MORNING_END_HOUR` = 6h<br>`EARLY_MORNING_MIN_AMOUNT_MINOR` = R$ 200<br>`EARLY_MORNING_MAX_AMOUNT_MINOR` = R$ 1.000 | `EARLY_MORNING_START_HOUR`, `EARLY_MORNING_END_HOUR`: escolha de design, sem norma por trás; madrugada é a faixa em que o uso legítimo é raro, então um valor médio ali foge do padrão da maioria dos clientes (hipótese, ainda não medida no simulador); a janela é mais curta que a janela noturna regulatória (20h às 6h) de propósito, para o sinal ser mais específico.<br>`EARLY_MORNING_MIN_AMOUNT_MINOR`: escolha de design; abaixo de R$ 200 o dano é pequeno e o valor é comum em madrugada (táxi, lanche). Usa o mesmo número do limite de dispositivo não cadastrado só por coerência de ordem de grandeza, e tem parâmetro próprio para poder ser calibrado sozinho.<br>`EARLY_MORNING_MAX_AMOUNT_MINOR`: escolha de design; R$ 1.000 é o limite noturno regulatório entre pessoas físicas, então acima disso o sinal já existe em outra regra e o piso regulatório cobre. É dúvida de comportamento (`how`) que o 2FA resolve, por isso `suspicious`. Não foi calibrado ainda no simulador. |
 | `WHO_DEVICE_UNKNOWN` | Eixo `who`, `suspicious`. Dispara quando o device do Pix não tem nenhum Pix aprovado do pagador (estado `unknown`) **e** o pagador já tem pelo menos um outro device com Pix aprovado. Pagador sem nenhum device conhecido (1ª transação, ou só histórico sem aprovação) não dispara: ausência de histórico nunca é evidência, então o 1º device de um cliente não vira dúvida. O estado do device é `unknown` (sem aprovado), `observing` (aprovado, mas o primeiro aprovado tem 24h ou menos) ou `trusted` (aprovado há mais de 24h); só `unknown` dispara. É uma regra de sinal, independente do piso `FLOOR_UNREGISTERED_DEVICE`: o piso garante o 2FA por valor, esta regra entra na matriz e, somada a outro eixo suspeito, rejeita. Vale para todos os fluxos. | `DEVICE_UNKNOWN_MIN_KNOWN_DEVICES` = 1<br>`DEVICE_TRUSTED_AFTER_HOURS` = 24h | `DEVICE_UNKNOWN_MIN_KNOWN_DEVICES`: escolha de design. Um cliente que sempre usou outro aparelho e aparece num aparelho novo é dúvida de identidade (`who`), que o 2FA resolve; com 0 devices conhecidos não há contra o que comparar, por isso o mínimo é 1 e a 1ª transação fica `ok`.<br>`DEVICE_TRUSTED_AFTER_HOURS`: escolha de design; um device aprovado há mais de 24h deixa de ser novo, e a espera impede que um fraudador ganhe confiança com um único Pix aprovado e use o device logo em seguida. Não foi calibrado ainda no simulador.<br>Consequência para quem chama o serviço e para os cenários de teste: o mesmo pagador precisa mandar sempre o mesmo `device_id`. Trocar de device a cada Pix, depois de já ter histórico, dispara esta regra (um gerador de payload que sorteia um device novo por Pix faz um pagador legítimo parecer suspeito). |
-| `WHO_AGGRAVATING_SIGNALS` | Eixo `who`, `suspicious`. Dispara quando ocorrem **2 ou mais sinais agravantes** do eixo `who` no Pix em análise. Agravantes avaliados: (1) IP com 5 ou mais pagadores distintos na última 1h (`ip.distinct_payers_1h`); (2) IP privado (`transaction.ip_is_private`: faixas RFC 1918, loopback e link-local; o IP do desafio 198.51.100.23 NÃO é privado); (3) canal novo para o pagador (`transaction.channel` fora de `known_channels`, avaliado apenas quando o pagador já possui histórico aprovado; ausência de histórico nunca é evidência). Um único agravante isolado mantém o eixo `who` em `ok`; 2 ou mais agravantes marcam `suspicious`. Vale para todos os fluxos. | `WHO_AGGRAVATING_MIN_SIGNALS` = 2<br>`WHO_AGGRAVATING_IP_DISTINCT_PAYERS_1H` = 5 | `WHO_AGGRAVATING_MIN_SIGNALS`: escolha de design. Um único sinal técnico isolado (ex.: estar em Wi-Fi com IP privado ou em um quiosque/NAT compartilhado) pode ser legítimo; a combinação de 2 ou mais agravantes simultâneos remove a dúvida fortuita e indica risco de canal/rede, pedindo 2FA (dúvida de identidade, que o 2FA resolve).<br>`WHO_AGGRAVATING_IP_DISTINCT_PAYERS_1H`: escolha de design; 5 pagadores diferentes num mesmo IP em 1h indica infraestrutura compartilhada atípica ou ataque distribuído.<br>IP privado: RFC 1918 (10/8, 172.16/12, 192.168/16), loopback e link-local. O IP do desafio (198.51.100.23, TEST-NET) não é privado para evitar falso positivo no teste de referência.<br>Canal novo: só avaliado para pagadores com histórico (fase 1 ou 2), garantindo que clientes em cold start não sofram penalização. |
+| `WHO_AGGRAVATING_SIGNALS` | Eixo `who`, `suspicious`. Dispara quando ocorrem **2 ou mais sinais agravantes** do eixo `who` no Pix em análise. Agravantes avaliados: (1) IP com 5 ou mais pagadores distintos na última 1h (`ip.distinct_payers_1h`); (2) IP privado (`transaction.ip_is_private`: faixas RFC 1918, loopback e link-local; o IP do desafio 198.51.100.23 NÃO é privado); (3) canal novo para o pagador (`transaction.channel` fora de `known_channels`, avaliado apenas quando o pagador já possui histórico aprovado; ausência de histórico nunca é evidência). Um único agravante isolado mantém o eixo `who` em `ok`; 2 ou mais agravantes marcam `suspicious`. Vale para todos os fluxos. | `WHO_AGGRAVATING_MIN_SIGNALS` = 2<br>`WHO_AGGRAVATING_IP_DISTINCT_PAYERS_1H` = 5 | `WHO_AGGRAVATING_MIN_SIGNALS`: escolha de design. Um único sinal técnico isolado (ex.: estar em Wi-Fi com IP privado ou em um quiosque/NAT compartilhado) pode ser legítimo; a combinação de 2 ou mais agravantes simultâneos remove a dúvida fortuita e indica risco de canal/rede, pedindo 2FA (dúvida de identidade, que o 2FA resolve).<br>`WHO_AGGRAVATING_IP_DISTINCT_PAYERS_1H`: escolha de design; 5 pagadores diferentes num mesmo IP em 1h indica infraestrutura compartilhada atípica ou ataque distribuído.<br>IP privado: RFC 1918 (10/8, 172.16/12, 192.168/16), loopback e link-local. O IP do desafio (198.51.100.23, faixa de documentação TEST-NET-2) não está nessas faixas, então não conta como privado.<br>Canal novo: só avaliado para pagadores com histórico (fase 1 ou 2), garantindo que clientes em cold start não sofram penalização. |
 | `HOW_RETRY_AFTER_REJECTION` | Eixo `how`, `suspicious`. É a "sondagem": o pagador teve um Pix `rejected` e, em **menos de** 10 minutos, tenta de novo com valor **estritamente menor** que o rejeitado. A rejeição considerada é a mais recente do mesmo pagador (conta de origem) nos últimos 90 dias. Valor igual ou maior, ou nova tentativa com 10 minutos ou mais, não dispara. Sem rejeição anterior a regra não atua (sem histórico, nunca é evidência). Vale para todos os fluxos. | `RETRY_AFTER_REJECTION_WINDOW_MINUTES` = 10 | `RETRY_AFTER_REJECTION_WINDOW_MINUTES`: escolha de design, sem norma por trás; é o mesmo horizonte de 10 minutos da velocity (`VELOCITY_WINDOW_MINUTES`), curto o bastante para ligar a nova tentativa à rejeição sem pegar um cliente que desistiu e voltou depois. Reduzir o valor depois de uma rejeição é o comportamento de quem testa o limite do antifraude; a rejeição do motor é o rótulo aproximado de fraude que temos (não há confirmação externa), por isso o sinal é `suspicious` e não `critical`: dúvida de comportamento, que o 2FA resolve. Não foi calibrado ainda no simulador. |
 | `HOW_TEST_PIX` | Eixo `how`, `suspicious`. É o "Pix de teste": o pagador mandou, nos últimos 15 minutos, um Pix de até R$ 10 (qualquer status) ao **mesmo destino**, e agora manda um Pix de pelo menos R$ 200 e de pelo menos 20 vezes o valor do teste a esse destino. Não dispara se o destino já era conhecido antes do teste, isto é, se existe Pix aprovado do pagador a esse destino anterior à janela de 15 minutos (o próprio Pix de teste, quando aprovado, não cria essa relação). O histórico (Pix pequeno no destino, já com o fator de 20 vezes aplicado ao valor atual) é calculado na consulta do resumo do pagador; o motor combina com o valor mínimo e com a relação anterior com o destino. Com os valores atuais, 20 vezes o teto de R$ 10 é exatamente o mínimo de R$ 200. Vale para todos os fluxos. | `TEST_PIX_MAX_AMOUNT_MINOR` = R$ 10<br>`TEST_PIX_WINDOW_MINUTES` = 15<br>`TEST_PIX_FOLLOWUP_MIN_AMOUNT_MINOR` = R$ 200<br>`TEST_PIX_FOLLOWUP_MULTIPLIER` = 20 | `TEST_PIX_MAX_AMOUNT_MINOR`: escolha de design, sem norma por trás; golpista que testa se a conta recebe e se o dono não percebe costuma mandar valor simbólico, e R$ 10 deixa de fora Pix pequenos legítimos acima disso.<br>`TEST_PIX_WINDOW_MINUTES`: escolha de design; o teste e o Pix grande vêm juntos, e 15 minutos cobre o intervalo de quem espera a confirmação antes de mandar o valor real.<br>`TEST_PIX_FOLLOWUP_MIN_AMOUNT_MINOR`: escolha de design; abaixo de R$ 200 o Pix seguinte não compensa a investigação e coincide com a ordem de grandeza do piso de device não cadastrado.<br>`TEST_PIX_FOLLOWUP_MULTIPLIER`: escolha de design; exigir um salto de 20 vezes separa o teste real do cliente que paga duas contas pequenas ao mesmo destino. É dúvida de comportamento (`how`) que o 2FA resolve, por isso `suspicious`. Não foi calibrado ainda no simulador. |
 | `TRUST_RECURRENT_BENEFICIARY` | Sinal de confiança (eixo `trust`, sem nível). Dispara quando o pagador já tem **2 ou mais Pix aprovados** para a mesma conta de destino **e** o primeiro deles foi aprovado **mais de 24h** antes do Pix em análise (24h exatas não bastam). Só conta `approved`; o dado vem da memória `account_counterparty` (consulta pontual pela chave do par, sem janela de 90 dias). Quando dispara, rebaixa **um** eixo `suspicious` para `ok`, na ordem who → how → where; nunca rebaixa um `critical` e nunca remove um piso regulatório. Se o rebaixamento muda a decisão, o `decision_basis` é `trust_downgrade` e o código aparece em `trust` no `metadata`. | `RECURRENT_BENEFICIARY_MIN_APPROVED` = 2<br>`RECURRENT_BENEFICIARY_MIN_AGE_HOURS` = 24h | `RECURRENT_BENEFICIARY_MIN_APPROVED`: escolha de design, sem norma por trás. Dois pagamentos aprovados mostram uma relação anterior a este Pix; um só pode ser o próprio golpe que passou.<br>`RECURRENT_BENEFICIARY_MIN_AGE_HOURS`: escolha de design. As 24h impedem o golpista de "fabricar" recorrência com dois Pix seguidos na mesma sessão: a relação precisa ter nascido antes do dia do ataque. Não foi calibrado ainda no simulador. |
 | `TRUST_MATURE_SELF_PIX` | Sinal de confiança (eixo `trust`, sem nível). Dispara quando as duas pontas são do **mesmo titular** (`account_holder`), a conta de destino foi aberta há **30 dias ou mais** (29 não basta) **e** o device do Pix é `trusted`. Não exige histórico entre as duas contas. Mesmo efeito do destinatário recorrente: rebaixa **um** eixo `suspicious` (who → how → where), nunca um `critical`, nunca um piso. | `MATURE_SELF_PIX_MIN_DESTINATION_AGE_DAYS` = 30 dias | `MATURE_SELF_PIX_MIN_DESTINATION_AGE_DAYS`: escolha de design, sem norma por trás. O risco do self-Pix é a conta fantasma recém-aberta no nome da vítima; 30 dias é o mesmo corte de destino jovem de `WHERE_DESTINATION_NEW_ACCOUNT`, para as regras não se contradizerem. O device `trusted` garante que é o cliente de sempre movendo o próprio dinheiro. Exigir histórico entre as contas puniria o primeiro Pix legítimo para a própria conta antiga. |
 
+### Por que estas regras
+
+Cada regra responde a uma das três dúvidas da tese e entrou por um de três motivos:
+
+- **Âncora regulatória.** O limite noturno entre pessoas físicas (`HOW_NIGHT_LIMIT_EXCEEDED` e o piso `FLOOR_NIGHT_LIMIT`), o limite de dispositivo não cadastrado (`FLOOR_UNREGISTERED_DEVICE`) e a rejeição por "fundada suspeita" no destino (`WHERE_DESTINATION_REJECTIONS`). São os únicos números com origem em norma.
+- **Padrões de golpe conhecidos, cada um no eixo da sua dúvida.** Conta de destino recém-aberta e destino que recebe de muitos pagadores (mula, falsa loja), aparelho usado por vários titulares, rajada de tentativas, Pix de teste antes do valor alto, nova tentativa menor logo depois de uma rejeição (sondagem), valor acima do padrão do próprio cliente, valor médio de madrugada e sinais de rede (IP compartilhado, IP privado, canal novo).
+- **Não punir quem já provou a relação.** Destinatário recorrente e Pix maduro para a própria conta rebaixam uma dúvida, para o cliente de sempre não pagar 2FA à toa.
+
+O nível de cada regra segue a tese. Dúvida que o 2FA resolve (identidade e comportamento) é `suspicious`. Evidência forte, que o 2FA não resolve, é `critical`: aparelho comprometido, fan-in em conta nova e rejeições no destino. Nenhuma regra trata a falta de histórico do pagador como evidência: as que comparam com o histórico só comparam quando ele existe, e sem histórico o teto do cliente é o teto de referência. Fora os números regulatórios, os parâmetros são escolhas de design, ajustadas por fluxo e por idade de conta. O simulador de personas (`scripts/farm.py`) confere que as personas legítimas terminam com 0 rejeições e no máximo 10% de 2FA, mas nenhum parâmetro foi calibrado com dados reais.
+
 ## Como as regras viram decisão
 
 Cada regra avaliada marca um dos três eixos (`who`, `how`, `where`) com um nível: `ok`, `suspicious` ou `critical`. O nível final de cada eixo é o mais grave entre suas regras.
+
+### Ordem de avaliação
+
+1. Cada analisador (`who`, `how`, `where`) avalia todas as suas regras. O eixo fica com o nível mais grave entre as regras que dispararam, ou `ok` se nenhuma disparou.
+2. Os sinais de confiança, se houver, rebaixam **um** eixo `suspicious` para `ok`, na ordem `who` → `how` → `where`. Um `critical` nunca é rebaixado.
+3. A matriz decide a partir dos três níveis (tabela abaixo).
+4. Por último, os pisos regulatórios: se a matriz deu `approved` e algum piso disparou, a decisão sobe para `two_factor_required`. Um piso nunca suaviza uma rejeição.
+5. O `metadata` registra a base da decisão (`decision_basis`), os motivos, os pisos e o sinal de confiança aplicado. Toda regra avaliada, inclusive as que não dispararam, é gravada em `pix_analysis_rule`.
+
+### Quando pede 2FA
+
+O resultado é `two_factor_required` em três casos, sempre sem nenhum eixo `critical`:
+
+- exatamente **um** eixo `suspicious` (`single_suspicious_axis`);
+- dois eixos `suspicious`, e um sinal de confiança rebaixou um deles (`trust_downgrade`);
+- nenhum eixo em dúvida, mas um piso regulatório disparou (`regulatory_floor`): device sem histórico com Pix acima de R$ 200 ou mais de R$ 1.000 no dia, ou PF→PF noturno somando mais de R$ 1.000.
 
 ### A matriz dos 3 eixos
 
@@ -85,11 +97,9 @@ Mínimo `two_factor_required`, independentemente do restante:
 - Device sem histórico e valor acima de R$ 200 (`FLOOR_UNREGISTERED_DEVICE`).
 - PF→PF noturno (20h às 6h) somando mais de R$ 1.000.
 
-São os únicos números absolutos da política, porque são regulatórios. O resto é relativo: teto do cliente, fluxo e idade das contas. As normas e os valores exatos por regra ficam na tabela de Regras, só com fonte primária conferida.
+São os únicos limites com origem regulatória. Os demais números da política são escolhas de design, ajustadas por fluxo e por idade de conta, e o teto do cliente acompanha o histórico dele. Os valores exatos de cada regra estão na tabela de Regras; número de norma só é citado com a fonte primária conferida.
 
 ### Sinais de confiança
-
-*Estado: o mecanismo de rebaixamento está no motor, mas os sinais `TRUST_*` ainda estão em implementação (T20); até lá `trust` volta vazio.*
 
 Destinatário recorrente, ou Pix para si mesmo (self-Pix) maduro com device confiável, rebaixa **um** eixo `suspicious` para `ok`. Um `critical` nunca é rebaixado. A confiança rebaixa primeiro a dúvida que ela resolve (quem e como), não a de destino, então a ordem é **who → how → where**: com `who` e `where` em `suspicious`, o `who` vira `ok`, o `where` continua `suspicious` e a decisão é `two_factor_required`; só com `where` em `suspicious`, o `where` é rebaixado. O sinal aparece em `trust` (por exemplo `TRUST_RECURRENT_BENEFICIARY`).
 
@@ -106,8 +116,6 @@ Destinatário recorrente, ou Pix para si mesmo (self-Pix) maduro com device conf
 | 0 | 0 aprovadas | usa o teto de referência |
 | 1 | 1 a 4 aprovadas | mistura teto histórico e de referência |
 | 2 | 5+ aprovadas e 30+ dias | predomina o teto histórico |
-
-*Estado: a fase já é calculada e gravada em `payer_maturity_phase`; o teto do cliente (`HOW_ABOVE_CUSTOMER_CEILING`) está em implementação (T21).*
 
 Teto do cliente = (n · teto_hist + 5 · teto_ref) / (n + 5), onde n é o número de Pix aprovados. O device evolui de `unknown` para `observing` e para `trusted` (1+ aprovada e primeira vez há mais de 24h). Device usado por 3 ou mais documentos é comprometido (`critical`).
 
@@ -328,7 +336,7 @@ Os três Pix usam ids, contas e devices diferentes e valem num banco recém-cria
 
 ## Como rodar e testar
 
-Do clone ao primeiro `curl` em quatro passos. Todo exemplo leva o header `INTERNAL-TOKEN`: o antifraude é chamado por outros serviços, não pelo cliente final.
+Os passos 1 e 2 levam do clone ao primeiro `curl`; os seguintes consultam a análise e rodam os testes, o simulador e o teste de carga. Todo exemplo leva o header `INTERNAL-TOKEN`: o antifraude é chamado por outros serviços, não pelo cliente final.
 
 **Pré-requisitos:** Docker com `docker compose`, Git e Python 3.11 a 3.13 (só para os testes). O Python 3.14 não serve: o `psycopg2-binary` fixado em `requirements.txt` ainda não tem pacote pronto para ele. O CI usa o 3.11; esta seção foi executada do zero num clone novo com o 3.13.
 
@@ -441,7 +449,7 @@ Esperado: todos os testes verdes e o `flake8` sem saída. Os testes do motor (`t
 
 ### 5. Simulador (farm)
 
-O simulador de personas submete sequências completas de transações pela própria API (`POST /pix/transaction` com `INTERNAL-TOKEN`), avalia as decisões do motor por persona contra o orçamento regulatório (0% de falsos positivos em transações legítimas e no máximo 10% de 2FA) e consolida a distribuição de decisões e regras por `policy_version`:
+O simulador de personas submete sequências completas de transações pela própria API (`POST /pix/transaction` com `INTERNAL-TOKEN`), avalia as decisões do motor por persona contra o orçamento que o time definiu, sem origem em norma (0 rejeições em transações legítimas e no máximo 10% de 2FA) e consolida a distribuição de decisões e regras por `policy_version`:
 
 ```bash
 python scripts/farm.py
@@ -481,7 +489,7 @@ Regras Disparadas no Cenário:
 
 ### 6. Testes de carga e latência
 
-O script `scripts/load_test.py` mede o throughput e a distribuição de latência (p50, p90, p95, p99) sob concorrência com o motor antifraude e o banco de dados ativos, validando a meta regulatória e de arquitetura (< 100 ms):
+O script `scripts/load_test.py` mede o throughput e a distribuição de latência (p50, p90, p95, p99) sob concorrência com o motor antifraude e o banco de dados ativos, e compara com o alvo de arquitetura do time (< 100 ms; escolha de design, sem origem em norma):
 
 ```bash
 # Execução padrão (20 requisições, 2 threads, caminho feliz)
@@ -522,6 +530,8 @@ Latência HTTP de Ponta a Ponta (ms):
 ================================================================
 ```
 
+O resultado depende da máquina. Este exemplo foi medido numa máquina do time; em outra máquina de desenvolvimento, com 300 Pix em 4 threads (`--requests 300 --concurrency 4 --scenario mixed`), o p95 de ponta a ponta passou de 300 ms. Veja [Limitações conhecidas](#limitações-conhecidas).
+
 ### 7. Coleção do Insomnia
 
 O repositório disponibiliza a coleção completa pronta para importação em `insomnia/antifraud-pix.insomnia.json` (48 requisições estruturadas).
@@ -551,8 +561,8 @@ erDiagram
     pix_transaction ||--|| pix_analysis : "1 Pix = 1 análise"
     pix_analysis ||--|{ pix_analysis_axis : "3 eixos por análise"
     pix_analysis ||--o{ pix_analysis_rule : "1 linha por regra avaliada"
-    account ||--o{ account_device : "memória (T20)"
-    account ||--o{ account_counterparty : "memória (T20)"
+    account ||--o{ account_device : "memória"
+    account ||--o{ account_counterparty : "memória"
 
     pix_participant { char8 ispb UK "listed = false: fora da lista do STR" }
     account_holder { varchar18 document_number UK "titular (PF ou PJ)" }
@@ -573,7 +583,7 @@ Cada tabela de lookup (`person_type`, `analysis_status`, `decision_basis`, `risk
 |---|---|---|
 | **Lookups** | `pix_participant`, `person_type`, `analysis_status`, `decision_basis`, `risk_level`, `rule_axis`, `rule_outcome` | Valores fixos em tabela (`enumerator` único + chave estrangeira), nunca texto solto, `CHECK IN (...)` nem `ENUM` nativo. `pix_participant` é a Relação de participantes do STR (BCB, 16/10/2026) mais o nosso participante fictício `99999999`. |
 | **Registro (não muda)** | `account_holder`, `account`, `pix_transaction`, `pix_analysis`, `pix_analysis_axis`, `pix_analysis_rule` | O fato (o Pix como chegou) e a opinião do motor (a análise, com a versão da política). O código só faz `INSERT` nessas tabelas. |
-| **Memória do motor** | `account_device`, `account_counterparty` | Aparelhos e destinos com Pix `approved`, com contador e primeira/última data. É cache, não verdade: dá para reconstruir a partir do registro. **Em implementação (T20); veja "Estado de implementação" abaixo.** |
+| **Memória do motor** | `account_device`, `account_counterparty` | Aparelhos e destinos com Pix `approved`, com contador e primeira/última data. É cache, não verdade: dá para reconstruir a partir do registro. Só é escrita quando o Pix é `approved`. |
 
 A view `pix_history` (transação + status da análise) existe no schema, mas nenhuma consulta do motor a usa hoje: as consultas fazem o join direto.
 
@@ -589,7 +599,7 @@ A view `pix_history` (transação + status da análise) existe no schema, mas ne
 ### Por que o banco é assim
 
 - **Conta separada do titular (`account_holder`).** Documento e PF/PJ descrevem a pessoa, não a conta. Uma pessoa com várias contas aparece uma vez. Isso importa para o antifraude: "device usado por N pessoas" conta **titulares**, não contas, e "Pix para si mesmo" é comparar o titular das duas pontas.
-- **Conta normalizada, e não repetida em cada Pix.** A mesma conta aparece como pagadora e como recebedora. Normalizar permite o fan-in por conta, ter chave estrangeira de verdade e (em implementação, T12) detectar conta que muda de titular (`409`).
+- **Conta normalizada, e não repetida em cada Pix.** A mesma conta aparece como pagadora e como recebedora. Normalizar permite o fan-in por conta, ter chave estrangeira de verdade e detectar conta conhecida que chega com outro titular ou outra data de abertura (`409`).
 - **Análise separada do Pix, 1:1.** O Pix é o fato; a análise é a opinião de uma política numa data. Separadas, dá para reavaliar com outra política sem tocar no fato. A relação 1:1 é garantida por `UNIQUE` em `pix_analysis.pix_transaction_id`.
 - **Nível por eixo como linha filha (`pix_analysis_axis`).** Três colunas `who_level`, `how_level` e `where_level` apontando para a mesma tabela pareceriam três tabelas diferentes. Com uma linha por eixo, o mesmo `rule_axis` serve à análise e às regras, e acrescentar um eixo não muda o schema. O nível gravado é o final, depois dos sinais de confiança.
 - **`pix_analysis_rule` guarda também o que não disparou.** Cada linha traz o resultado (`fired`, `not_fired` ou `unavailable`), o valor observado e o limiar usado. "Não sabia" é diferente de "sabia e estava normal", e o limiar gravado reproduz a decisão mesmo depois de uma mudança de política.
@@ -624,8 +634,10 @@ Os planos (`EXPLAIN ANALYZE` com 1 milhão de Pix) e os tempos medidos pelo time
 | Registro (`account_holder`, `account`, `pix_transaction`, `pix_analysis`, `pix_analysis_axis`, `pix_analysis_rule`) | implementado e testado por HTTP |
 | Idempotência (`UNIQUE` + hash, inclusive 10 requisições paralelas) | implementado e testado |
 | Histórico de janela (velocity, soma noturna, soma do device, titulares por device, fan-in, rejeições, IP) | implementado, consultando `pix_transaction` e `pix_analysis` |
-| Device confiável e destinatário recorrente | derivados hoje do histórico de Pix `approved` (mesma consulta do pagador), **não** das tabelas de memória |
-| `account_device`, `account_counterparty` | tabelas criadas; **em implementação (T20)**: nenhuma escrita nem leitura no código ainda |
+| Device confiável e destinatário recorrente | lidos das tabelas de memória `account_device` e `account_counterparty` |
+| `account_device`, `account_counterparty` | implementado: escrita a cada Pix `approved` (incremento atômico) e leitura na montagem do contexto |
+| Validações de sentido (`422`/`409`) | implementado e testado por HTTP |
+| Agravantes de geolocalização e país do IP (connector externo) | não implementado |
 | View `pix_history` | criada; nenhuma consulta a usa |
 
 ## Opções descartadas
@@ -633,7 +645,7 @@ Os planos (`EXPLAIN ANALYZE` com 1 milhão de Pix) e os tempos medidos pelo time
 | Opção | Por que ficou de fora |
 |---|---|
 | Parâmetros de regra no banco (`rule_parameters`) | Mudar número sem deploy é bom em produção, mas obrigaria a versionar o conteúdo para reproduzir decisões antigas. Em código, o git e a `policy_version` fazem isso, e os limiares usados ficam gravados em cada `pix_analysis_rule`. |
-| Perfil agregado por conta (score, Welford, p95 em tabela) | Na nossa escala a consulta indexada responde em milissegundos; um cache exigiria sincronização e teste de recálculo. O p95 do cliente será calculado no motor (T21), a partir dos valores aprovados da janela. |
+| Perfil agregado por conta (score, Welford, p95 em tabela) | Na nossa escala a consulta indexada responde em milissegundos; um cache exigiria sincronização e teste de recálculo. O p95 do cliente é calculado no motor a cada análise, a partir dos valores aprovados da janela de 90 dias. |
 | Redis | Mais um serviço, consistência entre cache e banco, e nenhum ganho mensurável no volume do desafio. Índices `(entidade, transaction_date DESC)` resolvem. |
 | `invalid_requests` (gravar requisições inválidas) | Gravar no caminho de erro exige escrita fora da transação que falhou. O log estruturado já registra o `400`/`422`. |
 | Marcação de risco persistida (`risk_flags`) e sinais externos | "Destino suspeito" é derivado de consulta (rejeições recentes); estado extra seria mais uma coisa a manter e a invalidar. |
@@ -650,21 +662,17 @@ Os planos (`EXPLAIN ANALYZE` com 1 milhão de Pix) e os tempos medidos pelo time
 
 ## Limitações conhecidas
 
-1. **Sem calibração em simulador.** `scripts/farm.py` (personas e relatório de taxas de 2FA e rejeição por `policy_version`) não foi feito. Os parâmetros marcados como escolha de design na tabela de Regras não foram medidos contra tráfego legítimo simulado, e o orçamento de falsos positivos (personas legítimas com 0 rejeições e no máximo 10% de 2FA) não foi verificado.
-2. **Teto do cliente e p95 sem validação com dados reais.** A fórmula (1,5 × p95 dos valores aprovados em 90 dias, misturada com um teto de referência conforme a fase do pagador) é uma escolha de design; os valores de referência não têm fonte regulatória. A regra `HOW_ABOVE_CUSTOMER_CEILING` está em implementação (T21).
-3. **Regras declaradas em `src/engine/policy.py` e ainda sem implementação** (por isso sem linha na tabela de Regras): `WHO_DEVICE_UNKNOWN`, `WHO_AGGRAVATING_SIGNALS`, `HOW_ABOVE_CUSTOMER_CEILING`, `HOW_EARLY_MORNING_AMOUNT`, `HOW_RETRY_AFTER_REJECTION`, `HOW_TEST_PIX`, `TRUST_RECURRENT_BENEFICIARY` e `TRUST_MATURE_SELF_PIX`. `WHO_DEVICE_UNKNOWN` e as quatro `HOW_*` estão em implementação (T21); `WHO_AGGRAVATING_SIGNALS` depende dos agravantes do item 4 (prioridade menor); as `TRUST_*`, em T20.
-4. **Agravantes de IP, canal e geolocalização não implementados.** Fazem parte do desenho (IP com 5 ou mais pagadores em 1 hora, IP privado, IP estrangeiro, geolocalização que parou de vir, fora do Brasil, distante com device novo, canal novo), mas os dados são gravados e nenhuma regra os usa ainda. O connector externo de país do IP e o registro `ip_country: "unavailable"` também não existem, e por isso o resultado `unavailable` de `pix_analysis_rule` não ocorre hoje.
-5. **Shadow mode não implementado.**
-6. **Memória do motor.** Conforme a seção "Estado de implementação": `account_device` e `account_counterparty` estão em implementação (T20). Enquanto isso, device confiável e destinatário recorrente saem do histórico `approved` na janela de 90 dias, então um device sem Pix aprovado há mais de 90 dias volta a ser "sem histórico".
-7. **Sinais de confiança em implementação (T20).** O rebaixamento de `suspicious` para `ok` existe no motor, mas nenhum sinal o aciona ainda; `trust` volta vazio.
-8. **Validações de sentido em implementação.** As validações de sentido `422`/`409` (T12: dígito verificador de CPF/CNPJ, datas, origem diferente do destino, conta conhecida com outro titular) ainda não estão no código. Enquanto T12 não entra, uma conta conhecida que chega com outro titular mantém o titular antigo, e origem igual ao destino não vira `422`.
-9. **Latência sem teste de carga.** `latency_ms` é gravada em cada análise, mas não medimos o p95 sob concorrência; o único teste de integração exige menos de 1 segundo. O valor medido não inclui o `commit`.
-10. **Concorrência sem lock no caminho do motor.** Dois Pix do mesmo pagador processados ao mesmo tempo não veem um ao outro (o histórico só enxerga transações já confirmadas), então a contagem de velocity pode ficar 1 abaixo do real numa rajada simultânea. A idempotência não sofre disso: o `UNIQUE` serializa os repetidos.
-11. **Fan-in e IP contam contas, não pessoas.** "Pagadores distintos" são contas de origem distintas; uma pessoa com várias contas pagando o mesmo destino conta mais de uma vez. Device compartilhado, ao contrário, conta titulares (documentos) distintos e não inclui o pagador atual.
-12. **Dados pessoais em claro.** O documento é guardado com pontuação em `account_holder` e o payload inteiro em `pix_transaction.raw_payload`, sem criptografia nem mascaramento. "Mascarado" no contrato significa o formato com pontuação. Retenção e anonimização (LGPD) ficam fora do escopo.
-13. **Append-only por construção do código.** Nenhum `UPDATE` ou `DELETE` toca o registro, mas o banco não impede (sem permissão restrita nem gatilho).
-14. **Fuso informado pelo chamador.** A hora local usada nas regras noturnas vem do offset do `transaction_date` enviado pelo serviço chamador; não há como validá-lo.
-15. **Lista de participantes é uma foto.** A Relação do STR de 16/10/2026 está no seed e não é atualizada; um ISPB legítimo posterior vira o sinal `WHERE_UNKNOWN_PARTICIPANT` (que sozinho só pede 2FA).
+1. **Parâmetros sem calibração com dados reais.** O simulador de personas (`scripts/farm.py`) cobre 7 personas e 27 transações sintéticas e confere o orçamento do time (personas legítimas com 0 rejeições e no máximo 10% de 2FA). Os parâmetros marcados como escolha de design na tabela de Regras não foram medidos contra tráfego real.
+2. **Teto do cliente sem validação com dados reais.** A fórmula (1,5 × p95 dos valores aprovados em 90 dias, misturada com um teto de referência conforme a fase do pagador) é uma escolha de design, e os valores de referência não têm fonte regulatória.
+3. **Agravantes de geolocalização e país do IP não implementados.** Geolocalização que parou de vir, fora do Brasil ou distante com device novo, e o país do IP por connector externo, fazem parte do desenho, mas nenhuma regra os usa: a geolocalização é gravada e não é avaliada, `ip_country` nunca é preenchido, e por isso o resultado `unavailable` de `pix_analysis_rule` não ocorre hoje.
+4. **Shadow mode não implementado.**
+5. **Latência acima do alvo sob concorrência.** `latency_ms` é gravada em cada análise e não inclui o `commit`. O alvo de 100 ms é do time, não de norma. No teste de carga numa máquina de desenvolvimento, com 300 Pix em 4 threads, a mediana dentro do controller foi 106 ms e o p95 156 ms; o resultado varia com a máquina, e a API sobe com um único worker do `uvicorn`.
+6. **Concorrência sem lock no caminho do motor.** Dois Pix do mesmo pagador processados ao mesmo tempo não veem um ao outro (o histórico só enxerga transações já confirmadas), então a contagem de velocity pode ficar 1 abaixo do real numa rajada simultânea. A idempotência não sofre disso: o `UNIQUE` serializa os repetidos.
+7. **Fan-in e IP contam contas, não pessoas.** "Pagadores distintos" são contas de origem distintas; uma pessoa com várias contas pagando o mesmo destino conta mais de uma vez. Device compartilhado, ao contrário, conta titulares (documentos) distintos e não inclui o pagador atual.
+8. **Dados pessoais em claro.** O documento é guardado com pontuação em `account_holder` e o payload inteiro em `pix_transaction.raw_payload`, sem criptografia nem mascaramento. "Mascarado" no contrato significa o formato com pontuação. Retenção e anonimização (LGPD) ficam fora do escopo.
+9. **Append-only por construção do código.** Nenhum `UPDATE` ou `DELETE` toca o registro, mas o banco não impede (sem permissão restrita nem gatilho).
+10. **Fuso informado pelo chamador.** A hora local usada nas regras noturnas vem do offset do `transaction_date` enviado pelo serviço chamador; não há como validá-lo.
+11. **Lista de participantes é uma foto.** A Relação do STR de 16/10/2026 está no seed e não é atualizada; um ISPB legítimo posterior vira o sinal `WHERE_UNKNOWN_PARTICIPANT` (que sozinho só pede 2FA).
 
 ## Contrato da API
 
