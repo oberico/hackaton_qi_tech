@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Motor antifraude de Pix do RNV — final (hackathon) do Bootcamp QI Tech 2026, área Risk Solutions. API que recebe um Pix (`POST /pix/transaction`), decide `approved`, `two_factor_required` ou `rejected` com motivo explicável em `metadata`, grava tudo e devolve a análise em `GET /pix/transaction/{id}`. Serviço único, chamado por outros serviços (como o Transferências do RNV), nunca pelo cliente final. Entrega: domingo 18/10 até 12:00 (code freeze 08:00).
+Motor antifraude de Pix do RNV — final (hackathon) do Bootcamp QI Tech 2026, área Risk Solutions. API que recebe um Pix (`POST /pix/transaction`), decide `approved`, `two_factor_required` ou `rejected` com motivo explicável em `metadata`, grava tudo e devolve a análise em `GET /pix/transaction/{id}`. Serviço único, chamado por outros serviços (como o Transferências do RNV), nunca pelo cliente final. Entrega: domingo 18/10 até 12:00 (code freeze 09:00).
 
 O payload de exemplo do desafio está em `tests/fixtures/challenge_example_payload.json` (resultado esperado: `rejected`). Antes de codar, leia a seção "Entrega" abaixo, `docs/modelo-de-dados.md` (o porquê de cada tabela e o que foi descartado), `docs/catalogo-de-erros.md` (os códigos) e `src/engine/risk_context.py` (o contrato do motor). Em conflito, este arquivo vence e você me avisa. Em caso de dúvida, me pergunte. Não faça suposições sobre regra de negócio.
 
@@ -50,7 +50,7 @@ Regras para quem desenvolve uma tarefa:
 
 Regras para o Ramon (integrador):
 - Revisa em janelas curtas (~45 min), na ordem do `TASKS.md` (P0 antes). Confere: critério de pronto da tarefa, a seção Ciclos TDD e a ordem red → green → refactor nos commits, convenções deste arquivo, testes verdes, README atualizado, nenhum arquivo de contrato alterado sem combinar.
-- Merge em `develop` com squash. `main` só recebe `develop` no code freeze (08:00).
+- Merge em `develop` com squash. `main` só recebe `develop` no code freeze (09:00).
 - PR só de README ou de teste puro pode ser revisado pela outra colega; o Ramon é avisado e faz o merge.
 
 ## Tese
