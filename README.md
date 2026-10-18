@@ -327,7 +327,124 @@ Os três Pix usam ids, contas e devices diferentes e valem num banco recém-cria
 
 ## Como rodar e testar
 
-[Marcador: seção completa na tarefa T17.]
+Do clone ao primeiro `curl` em quatro passos. Todo exemplo leva o header `INTERNAL-TOKEN`: o antifraude é chamado por outros serviços, não pelo cliente final.
+
+**Pré-requisitos:** Docker com `docker compose`, Git e Python 3.11 a 3.13 (só para os testes). O Python 3.14 não serve: o `psycopg2-binary` fixado em `requirements.txt` ainda não tem pacote pronto para ele. O CI usa o 3.11; esta seção foi executada do zero num clone novo com o 3.13.
+
+### 1. Subir a API e o banco
+
+```bash
+git clone https://github.com/oberico/hackaton_qi_tech.git
+cd hackaton_qi_tech
+docker compose up -d --build
+curl -s http://localhost:8001/health_check
+```
+
+A resposta esperada é `{"status":"ok"}`. A API fica em `localhost:8001` e o Postgres em `localhost:5434`. O token padrão é `internal-token-dev` (variável `INTERNAL_TOKEN` do compose).
+
+O `database/database.sql` roda **uma vez**, na criação do volume. Para recriar o banco do zero:
+
+```bash
+docker compose down -v && docker compose up -d --build
+```
+
+### 2. Primeiro Pix: o payload de exemplo do desafio
+
+Pronto para colar (é o conteúdo de `tests/fixtures/challenge_example_payload.json`):
+
+```bash
+curl -s -w '\nHTTP %{http_code}\n' -X POST http://localhost:8001/pix/transaction \
+  -H "Content-Type: application/json" \
+  -H "INTERNAL-TOKEN: internal-token-dev" \
+  -d '{
+    "id": "pix-000123",
+    "amount": 150000,
+    "transaction_date": "2026-10-17T22:15:00-03:00",
+    "source_account": {
+      "branch": "0001",
+      "account_number": "88213",
+      "opening_date": "2025-03-02T10:00:00-03:00",
+      "owner": { "document_number": "123.456.789-09" }
+    },
+    "destination_account": {
+      "participant": "60701190",
+      "branch": "3675",
+      "account_number": "10442",
+      "opening_date": "2026-10-10T09:00:00-03:00",
+      "owner": { "document_number": "987.654.321-00" }
+    },
+    "source": {
+      "device_id": "dvc-9f2c71a8",
+      "channel": "app",
+      "ip": "198.51.100.23",
+      "geolocation": { "latitude": -23.56, "longitude": -46.65 }
+    }
+  }'
+```
+
+Resposta esperada, `HTTP 201` (reformatada para leitura; a real vem numa linha só, e o `key` muda a cada banco novo):
+
+```json
+{
+  "key": "95308c28-3714-483a-b154-aac421c76e53",
+  "status": "rejected",
+  "metadata": {
+    "policy_version": "2026.10.18-1",
+    "flow": "pf_pf",
+    "payer_maturity_phase": 0,
+    "decision_basis": "two_suspicious_axes",
+    "axes": {"who": "ok", "where": "suspicious", "how": "suspicious"},
+    "reasons": [
+      {"axis": "how", "code": "HOW_NIGHT_LIMIT_EXCEEDED", "level": "suspicious",
+       "observed": {"night_amount": 150000}, "threshold": {"night_amount": 100000},
+       "description": "Night-time amount between individuals above R$ 1,000.",
+       "translation": "Soma noturna entre pessoas físicas acima de R$ 1.000."},
+      {"axis": "where", "code": "WHERE_DESTINATION_NEW_ACCOUNT", "level": "suspicious",
+       "observed": {"destination_account_age_days": 7.55}, "threshold": {"destination_account_age_days": 30},
+       "description": "Destination account opened less than 30 days ago.",
+       "translation": "Conta de destino aberta há menos de 30 dias."}
+    ],
+    "floors": ["FLOOR_UNREGISTERED_DEVICE", "FLOOR_NIGHT_LIMIT"],
+    "trust": []
+  }
+}
+```
+
+Foi `rejected` porque dois eixos ficaram suspeitos: `how` (R$ 1.500 à noite entre pessoas físicas, acima do limite de R$ 1.000) e `where` (destino aberto há 7,55 dias, menos de 30). O passo a passo da decisão está em [Como as regras viram decisão](#como-as-regras-viram-decisão).
+
+**Idempotência:** repetir o mesmo `curl` devolve `HTTP 200` com a **mesma** análise (mesmo `key`), sem gravar nada de novo. Reusar o `id` com um corpo diferente devolve `422` com `RNV001024`.
+
+### 3. Consultar a análise
+
+```bash
+curl -s -w '\nHTTP %{http_code}\n' \
+  -H "INTERNAL-TOKEN: internal-token-dev" \
+  http://localhost:8001/pix/transaction/pix-000123
+```
+
+Devolve `HTTP 200` com o mesmo `key`, `status` e `metadata` do `POST`. Um `id` que não existe devolve `404` com `RNV001039`, e a falta do header `INTERNAL-TOKEN` devolve `403` com `RNV000002`. Todos os códigos estão em [Contrato da API](#contrato-da-api).
+
+### 4. Rodar os testes
+
+Os testes de integração chamam a API de verdade, então ela precisa estar de pé (passo 1). Eles usam `http://localhost:8001` e o Postgres em `localhost:5434`, e as variáveis `API_URL`, `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD` e `DB_NAME` mudam esses endereços.
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements-dev.txt
+pytest
+flake8
+```
+
+Esperado: todos os testes verdes e o `flake8` sem saída. Os testes do motor (`tests/engine`) e a checagem de camadas (`tests/architecture`) não precisam da API.
+
+### 5. Simulador (farm)
+
+```bash
+python scripts/farm.py
+```
+
+O simulador de personas, que mede as taxas de 2FA e de rejeição por `policy_version`, **ainda não está no repositório**: o `scripts/farm.py` é da tarefa T23. Veja [Limitações conhecidas](#limitações-conhecidas).
 
 
 ## Modelo de dados
