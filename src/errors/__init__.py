@@ -10,12 +10,18 @@ from errors.custom_errors import (
     ServiceBusy,
     ValueOutOfRange,
 )
-from errors.pix_transaction_errors import InvalidCpf, PixIdReusedWithDifferentPayload, PixTransactionNotFound
+from errors.pix_transaction_errors import (
+    InvalidCnpj,
+    InvalidCpf,
+    PixIdReusedWithDifferentPayload,
+    PixTransactionNotFound,
+)
 
 __all__ = [
     "QIException",
     "FieldNotAllowed",
     "ForbiddenNotInternal",
+    "InvalidCnpj",
     "InvalidCpf",
     "InvalidFormat",
     "InvalidSchema",

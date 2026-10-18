@@ -61,4 +61,3 @@ class TestPostSemanticErrors:
         get_status, get_response = RequestGenerator.GET_pix_transaction(payload["id"])
         assert get_status == 404
         assert get_response["code"] == "RNV001039"
-

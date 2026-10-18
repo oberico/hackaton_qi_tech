@@ -32,3 +32,14 @@ class InvalidCpf(QIException):
         description = "The document number has invalid CPF check digits."
         translation = "O CPF informado possui dígitos verificadores inválidos."
         super().__init__(title, self.code, http_status, description, translation)
+
+
+class InvalidCnpj(QIException):
+    code = "RNV001020"
+
+    def __init__(self) -> None:
+        title = "Invalid CNPJ"
+        http_status = 422
+        description = "The document number has invalid CNPJ check digits."
+        translation = "O CNPJ informado possui dígitos verificadores inválidos."
+        super().__init__(title, self.code, http_status, description, translation)
