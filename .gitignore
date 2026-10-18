@@ -74,3 +74,6 @@ payload.json
 # --- Python / macOS ---
 __pycache__/
 *.pyc
+
+# --- Coleção local do Insomnia ---
+insomnia/

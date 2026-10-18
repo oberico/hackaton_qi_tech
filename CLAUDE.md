@@ -137,6 +137,8 @@ Não perguntamos "quão arriscado é". Perguntamos **qual é a dúvida**:
 | Rejeições no destino | rejected | "fundada suspeita" (Res. BCB 501/2025) |
 | Teto do cliente, device confiável, destinatário recorrente | approved | conservador: só o que CERTAMENTE saiu |
 
+As consultas trazem só o histórico anterior ao Pix analisado; o motor soma o Pix corrente (`amount`) às somas de limite. O repository fica com uma responsabilidade (buscar o passado) e a aritmética fica no motor, testável sem banco.
+
 ## Motor
 **Níveis por eixo:** `ok` / `suspicious` / `critical`.
 
@@ -171,6 +173,9 @@ Todos os horários são **locais do pagador** (`transaction_date` + `utc_offset_
 | Velocity PJ | 20+ Pix em 10 min = suspicious · 40+ = critical | `VELOCITY_10MIN` por fluxo | Mesma proporção do PF (3 → 6, o dobro): folha de pagamento justifica volume alto, mas o dobro do normal já é rajada. |
 | "Dia" do device novo | dia-calendário local (00:00–23:59) | `UNKNOWN_DEVICE_DAILY_LIMIT_MINOR = 100000` | A regra do BCB é "por dia", não "24h corridas"; dia-calendário é o que o cliente entende e o que a regulação descreve. |
 | Soma noturna | o **período noturno** que contém o Pix: das 20:00 até as 05:59 seguintes (Pix às 02h soma desde as 20h do dia anterior). PF→PF, titulares diferentes, status approved + two_factor_required | `NIGHT_START_HOUR = 20`, `NIGHT_END_HOUR = 6`, `NIGHT_LIMIT_MINOR = 100000` | O limite regulatório é por período noturno, não 24h corridas. Self-Pix fica fora porque o limite trata de pagamento entre pessoas. |
+| Pix de teste (`HOW_TEST_PIX`) | Pix de até **R$ 10,00** para um destino **sem relação aprovada** com o pagador, seguido em até **15 min** de um Pix para o **mesmo destino** de **R$ 200,00 ou mais** e de pelo menos **20×** o valor do teste → how `suspicious`. Não dispara se o destino for recorrente | `TEST_PIX_MAX_AMOUNT_MINOR = 1000`, `TEST_PIX_WINDOW_MINUTES = 15`, `TEST_PIX_FOLLOWUP_MIN_AMOUNT_MINOR = 20000`, `TEST_PIX_FOLLOWUP_MULTIPLIER = 20` | R$ 0,01 a R$ 10 é a faixa de quem confere se a conta "caiu". Os R$ 200 alinham com o limite de valor baixo do piso de device; o fator 20 separa "conferi a conta" de "esvaziei a conta". Destino recorrente fica de fora porque a relação já foi validada. |
+| Destinatário recorrente (`TRUST_RECURRENT_BENEFICIARY`) | **2+ Pix aprovados** para o destino e o **primeiro aprovado há mais de 24h** (lido de `account_counterparty`) | `RECURRENT_BENEFICIARY_MIN_APPROVED = 2`, `RECURRENT_BENEFICIARY_MIN_AGE_HOURS = 24` | Dois pagamentos aprovados em momentos distintos mostram uma relação anterior a este Pix. As 24h impedem o golpista de "fabricar" recorrência com dois Pix seguidos na mesma sessão. |
+| Confiança: ordem de rebaixamento | **who → how → where**; rebaixa um eixo `suspicious` por vez; `critical` nunca | `TRUST_DOWNGRADE_AXIS_ORDER` | A confiança rebaixa primeiro a dúvida que ela resolve (quem e como); a dúvida de destino é a que o 2FA não resolve, então ela é a última a ser apagada. |
 
 ## Princípios da política
 1. **Regras por fluxo** (`flow` = `pf_pf`, `pf_pj`, `pj_pf`, `pj_pj`, derivado do formato do documento; não é gravado). Os parâmetros em `policy.py` são indexados por fluxo:
