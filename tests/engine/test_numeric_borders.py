@@ -134,3 +134,34 @@ def test_payer_maturity_phase_border(approved_count, relationship_days, phase):
     context = make_context(payer={"approved_count": approved_count, "relationship_days": relationship_days})
 
     assert evaluate(context).maturity_phase == phase
+
+
+DECISION_BY_LEVEL = {
+    None: APPROVED,
+    RiskLevel.SUSPICIOUS: TWO_FACTOR_BY_AXIS,
+    RiskLevel.CRITICAL: (Decision.REJECTED, DecisionBasis.CRITICAL_AXIS),
+}
+
+VELOCITY_THRESHOLD = {Flow.PF_PF: {"suspicious": 3, "critical": 6}}
+
+VELOCITY_BORDERS = {
+    "pf_pf_two_attempts": (Flow.PF_PF, 2, None),
+    "pf_pf_three_attempts": (Flow.PF_PF, 3, RiskLevel.SUSPICIOUS),
+    "pf_pf_five_attempts": (Flow.PF_PF, 5, RiskLevel.SUSPICIOUS),
+    "pf_pf_six_attempts": (Flow.PF_PF, 6, RiskLevel.CRITICAL),
+}
+
+
+@pytest.mark.parametrize("flow, attempts, level", VELOCITY_BORDERS.values(), ids=VELOCITY_BORDERS.keys())
+def test_velocity_border(flow, attempts, level):
+    context = make_context(transaction={"flow": flow}, payer={"transactions_last_10min": attempts})
+
+    result = evaluate(context)
+
+    rule = rule_of(result, "HOW_VELOCITY_EXCEEDED")
+    assert (rule.outcome, rule.level) == (RuleOutcome.FIRED if level else RuleOutcome.NOT_FIRED, level)
+    assert (rule.observed, rule.threshold) == ({"attempts": attempts}, VELOCITY_THRESHOLD[flow])
+    assert rule.axis == "how"
+    assert rule.description and rule.translation
+    assert result.how.level == (level or RiskLevel.OK)
+    assert (result.decision, result.decision_basis) == DECISION_BY_LEVEL[level]
