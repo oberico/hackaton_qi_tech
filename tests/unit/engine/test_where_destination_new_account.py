@@ -33,3 +33,26 @@ def test_reason_carries_observed_and_threshold(make_context):
     assert rule.threshold == {"destination_account_age_days": policy.DESTINATION_NEW_ACCOUNT_DAYS}
     assert rule.description
     assert rule.translation
+
+
+def test_twenty_nine_day_old_destination_fires(make_context):
+    result = evaluate(destination_context(make_context, policy.DESTINATION_NEW_ACCOUNT_DAYS - 1))
+
+    assert rule_of(result).outcome == RuleOutcome.FIRED
+
+
+def test_exactly_thirty_day_old_destination_does_not_fire(make_context):
+    result = evaluate(destination_context(make_context, policy.DESTINATION_NEW_ACCOUNT_DAYS))
+
+    assert rule_of(result).outcome == RuleOutcome.NOT_FIRED
+    assert result.where.level == RiskLevel.OK
+
+
+def test_old_destination_does_not_fire_and_keeps_observed_and_threshold(make_context):
+    result = evaluate(destination_context(make_context, 400))
+
+    rule = rule_of(result)
+    assert rule.outcome == RuleOutcome.NOT_FIRED
+    assert rule.observed == {"destination_account_age_days": 400}
+    assert rule.threshold == {"destination_account_age_days": policy.DESTINATION_NEW_ACCOUNT_DAYS}
+    assert result.decision == Decision.APPROVED
