@@ -142,13 +142,20 @@ DECISION_BY_LEVEL = {
     RiskLevel.CRITICAL: (Decision.REJECTED, DecisionBasis.CRITICAL_AXIS),
 }
 
-VELOCITY_THRESHOLD = {Flow.PF_PF: {"suspicious": 3, "critical": 6}}
+VELOCITY_THRESHOLD = {
+    Flow.PF_PF: {"suspicious": 3, "critical": 6},
+    Flow.PJ_PF: {"suspicious": 20, "critical": 40},
+}
 
 VELOCITY_BORDERS = {
     "pf_pf_two_attempts": (Flow.PF_PF, 2, None),
     "pf_pf_three_attempts": (Flow.PF_PF, 3, RiskLevel.SUSPICIOUS),
     "pf_pf_five_attempts": (Flow.PF_PF, 5, RiskLevel.SUSPICIOUS),
     "pf_pf_six_attempts": (Flow.PF_PF, 6, RiskLevel.CRITICAL),
+    "pj_pf_nineteen_attempts": (Flow.PJ_PF, 19, None),
+    "pj_pf_twenty_attempts": (Flow.PJ_PF, 20, RiskLevel.SUSPICIOUS),
+    "pj_pf_thirty_nine_attempts": (Flow.PJ_PF, 39, RiskLevel.SUSPICIOUS),
+    "pj_pf_forty_attempts": (Flow.PJ_PF, 40, RiskLevel.CRITICAL),
 }
 
 
