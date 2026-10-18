@@ -34,6 +34,25 @@ Regras do README:
 - "Como rodar e testar": do clone ao primeiro `curl` em poucos comandos, **com o header `INTERNAL-TOKEN` em todo exemplo**, o payload de exemplo do desafio pronto para colar, como rodar os testes e o farm. Testar numa máquina limpa antes do code freeze.
 - Português, direto, sem enrolação. Toda mudança de regra ou parâmetro atualiza o README no mesmo PR.
 
+## Fluxo de trabalho do time (vale para TODO agente, de qualquer pessoa)
+
+Três pessoas, cada uma com o próprio Claude Code. **Ramon** é o integrador: revisa, aprova e faz o merge de todo PR. **Victoria** e **Natalia** desenvolvem tarefas do `TASKS.md` e abrem PR. Ninguém faz merge do próprio PR.
+
+Regras para quem desenvolve uma tarefa:
+1. **Uma tarefa = uma branch = um PR.** Branch a partir de `develop` atualizada: `feat/<ID>-<nome-curto>` (ex.: `feat/T07-get-pix-transaction`). PR sempre para `develop`.
+2. **Só toque nos arquivos da tarefa.** Precisou mexer em outro arquivo (principalmente `database/database.sql`, `src/engine/risk_context.py`, `src/engine/policy.py`, `CLAUDE.md`, `docs/catalogo-de-erros.md`)? **Pare e pergunte ao Ramon.** Esses arquivos são contrato: mudança neles só pelo Ramon.
+3. **Não invente regra de negócio, código de erro, parâmetro de política, tabela ou coluna.** Se a tarefa não diz, pergunte. Na dúvida entre duas leituras, escolha a mais conservadora e escreva a dúvida na descrição do PR.
+4. **TDD:** o teste vem primeiro e está no mesmo PR. Antes de abrir o PR: `docker compose down -v && docker compose up -d`, todos os testes verdes (`pytest`), `flake8` limpo.
+5. **README no mesmo PR:** tarefa que cria ou muda regra, parâmetro, rota ou comando atualiza a linha correspondente do README.md.
+6. **PR pequeno** (idealmente < 300 linhas). Descrição do PR, nesta ordem: `Tarefa: <ID>` · o que foi feito · como testar (comandos) · arquivos tocados · dúvidas/decisões tomadas · o que ficou de fora.
+7. Atualize o estado da sua tarefa no `TASKS.md` (a fazer → fazendo → em revisão) no próprio PR.
+8. Bloqueou mais de 15 minutos? Avise o Ramon no grupo com o ID da tarefa. Não contorne o bloqueio mexendo em contrato.
+
+Regras para o Ramon (integrador):
+- Revisa em janelas curtas (~45 min), na ordem do `TASKS.md` (P0 antes). Confere: critério de pronto da tarefa, convenções deste arquivo, testes verdes, README atualizado, nenhum arquivo de contrato alterado sem combinar.
+- Merge em `develop` com squash. `main` só recebe `develop` no code freeze (08:00).
+- PR só de README ou de teste puro pode ser revisado pela outra colega; o Ramon é avisado e faz o merge.
+
 ## Tese
 
 Não perguntamos "quão arriscado é". Perguntamos **qual é a dúvida**:
@@ -86,7 +105,7 @@ Não perguntamos "quão arriscado é". Perguntamos **qual é a dúvida**:
 - **Unidade do motor (exceção controlada):** `tests/unit/engine/` pode importar **só** `src/engine/`, que é puro. Um teste por regra e por célula da matriz, montando `RiskContext` à mão. Não usa banco nem HTTP.
 - **Cenários (personas):** sequências de Pix pela API com `transaction_date` no passado; viram teste de integração e alimentam o relatório de taxas por `policy_version`.
 - Obrigatórios: payload de exemplo do desafio → `rejected`; 10x o mesmo `id` → uma análise; mesmo `id` com payload diferente → `422 RNV001024`; 1ª transação de cliente sem histórico nunca é `rejected` sem evidência em 2 eixos ou de outra entidade; persona legítima com 0 rejeições.
-- Git: branches `main`/`develop`, PR pequeno para `develop`, CI do GitHub Actions copiado do banco.
+- Git: ver "Fluxo de trabalho do time". CI do GitHub Actions copiado do banco roda em todo PR.
 
 ## Fluxo do POST
 1. Schema → 400
