@@ -28,7 +28,6 @@ class RiskHistoryRepository:
     def payer_summary(
         self,
         source_account_id: int,
-        destination_account_id: int,
         device_id: str,
         since: datetime,
         velocity_since: datetime,
@@ -37,7 +36,6 @@ class RiskHistoryRepository:
     ) -> Row:
         approved = AnalysisStatus.enumerator == APPROVED
         same_device = PixTransaction.device_id == device_id
-        same_beneficiary = PixTransaction.destination_account_id == destination_account_id
         return self.session.execute(
             select(
                 func.count().filter(PixTransaction.transaction_date >= velocity_since).label("attempts"),
@@ -46,11 +44,7 @@ class RiskHistoryRepository:
                 ).label("device_amount_today"),
                 func.count().filter(approved).label("approved_count"),
                 func.min(PixTransaction.transaction_date).filter(approved).label("first_approved_at"),
-                func.min(PixTransaction.transaction_date).filter(approved, same_device).label("device_first_approved_at"),
-                func.count(func.distinct(PixTransaction.device_id)).filter(approved).label("known_devices_count"),
                 func.array_agg(aggregate_order_by(PixTransaction.amount_minor, PixTransaction.transaction_date)).filter(approved).label("approved_amounts"),
-                func.count().filter(approved, same_beneficiary).label("beneficiary_approved_count"),
-                func.min(PixTransaction.transaction_date).filter(approved, same_beneficiary).label("beneficiary_first_approved_at"),
             )
             .select_from(PixTransaction)
             .outerjoin(PixAnalysis, PixAnalysis.pix_transaction_id == PixTransaction.id)

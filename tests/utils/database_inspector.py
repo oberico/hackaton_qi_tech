@@ -1,5 +1,5 @@
 from os import environ
-from typing import List
+from typing import List, Optional
 
 import psycopg2
 import psycopg2.extras
@@ -48,6 +48,26 @@ JOIN pix_transaction pix ON pix.id = analysis.pix_transaction_id
 WHERE pix.transaction_id = %s
 """
 
+ACCOUNT_DEVICE_QUERY = """
+SELECT device.approved_count, device.first_approved_at, device.last_approved_at
+FROM account_device device
+JOIN account ON account.id = device.account_id
+JOIN account_holder holder ON holder.id = account.account_holder_id
+WHERE holder.document_number = %s AND account.account_number = %s AND device.device_id = %s
+"""
+
+ACCOUNT_COUNTERPARTY_QUERY = """
+SELECT counterparty.approved_count, counterparty.approved_amount_minor,
+       counterparty.first_approved_at, counterparty.last_approved_at
+FROM account_counterparty counterparty
+JOIN account source ON source.id = counterparty.source_account_id
+JOIN account_holder payer ON payer.id = source.account_holder_id
+JOIN account destination ON destination.id = counterparty.destination_account_id
+JOIN account_holder beneficiary ON beneficiary.id = destination.account_holder_id
+WHERE payer.document_number = %s AND source.account_number = %s
+  AND beneficiary.document_number = %s AND destination.account_number = %s
+"""
+
 
 class DatabaseInspector:
     @staticmethod
@@ -62,11 +82,11 @@ class DatabaseInspector:
         return psycopg2.connect(dsn, cursor_factory=psycopg2.extras.RealDictCursor)
 
     @staticmethod
-    def fetch(query: str, transaction_id: str) -> List[dict]:
+    def fetch(query: str, *parameters: str) -> List[dict]:
         connection = DatabaseInspector.connect()
         try:
             with connection.cursor() as cursor:
-                cursor.execute(query, (transaction_id,))
+                cursor.execute(query, parameters)
                 return [dict(row) for row in cursor.fetchall()]
         finally:
             connection.close()
@@ -90,3 +110,23 @@ class DatabaseInspector:
     @staticmethod
     def analysis_keys(transaction_id: str) -> List[str]:
         return [row["analysis_key"] for row in DatabaseInspector.fetch(ANALYSIS_KEYS_QUERY, transaction_id)]
+
+    @staticmethod
+    def account_device(payload: dict) -> Optional[dict]:
+        source = payload["source_account"]
+        rows = DatabaseInspector.fetch(
+            ACCOUNT_DEVICE_QUERY, source["owner"]["document_number"], source["account_number"], payload["source"]["device_id"]
+        )
+        return rows[0] if rows else None
+
+    @staticmethod
+    def account_counterparty(payload: dict) -> Optional[dict]:
+        source, destination = payload["source_account"], payload["destination_account"]
+        rows = DatabaseInspector.fetch(
+            ACCOUNT_COUNTERPARTY_QUERY,
+            source["owner"]["document_number"],
+            source["account_number"],
+            destination["owner"]["document_number"],
+            destination["account_number"],
+        )
+        return rows[0] if rows else None
