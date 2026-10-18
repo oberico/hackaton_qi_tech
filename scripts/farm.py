@@ -6,6 +6,7 @@ from pathlib import Path
 import sys
 import time
 from typing import Dict, List, Optional
+import urllib.error
 import urllib.request
 import uuid
 
@@ -187,6 +188,29 @@ def format_farm_report_table(report: FarmReport) -> str:
     return "\n".join(lines)
 
 
+MAX_PERSONA_ATTEMPTS = 5
+
+
+def post_pix(url: str, token: str, payload: dict) -> dict:
+    req = urllib.request.Request(
+        url,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={
+            "Content-Type": "application/json",
+            "INTERNAL-TOKEN": token,
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        try:
+            return json.loads(e.read().decode("utf-8"))
+        except Exception:
+            return {"status": "error", "error": str(e)}
+
+
 def run_farm(
     base_url: str = "http://localhost:8001",
     token: str = "internal-token-dev",
@@ -201,31 +225,17 @@ def run_farm(
     personas_results: List[PersonaRunResult] = []
 
     for persona in active_personas:
-        payloads = persona.generator(active_seed)
-        responses = []
-        for payload in payloads:
-            req = urllib.request.Request(
-                url,
-                data=json.dumps(payload).encode("utf-8"),
-                headers={
-                    "Content-Type": "application/json",
-                    "INTERNAL-TOKEN": token,
-                },
-                method="POST",
-            )
-            try:
-                with urllib.request.urlopen(req, timeout=10) as resp:
-                    resp_data = json.loads(resp.read().decode("utf-8"))
-                    responses.append(resp_data)
-                    pv = resp_data.get("metadata", {}).get("policy_version")
-                    if pv:
-                        policy_version = pv
-            except urllib.error.HTTPError as e:
-                try:
-                    err_data = json.loads(e.read().decode("utf-8"))
-                    responses.append(err_data)
-                except Exception:
-                    responses.append({"status": "error", "error": str(e)})
+        for attempt in range(MAX_PERSONA_ATTEMPTS):
+            persona_seed = active_seed if attempt == 0 else f"{active_seed}-retry{attempt}"
+            responses = []
+            for payload in persona.generator(persona_seed):
+                response = post_pix(url, token, payload)
+                responses.append(response)
+                pv = response.get("metadata", {}).get("policy_version")
+                if pv:
+                    policy_version = pv
+            if all("metadata" in response for response in responses):
+                break
 
         res = evaluate_persona_results(
             code=persona.code,
