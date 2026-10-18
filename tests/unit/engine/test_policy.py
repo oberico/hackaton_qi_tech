@@ -67,3 +67,16 @@ def test_decided_parameters_match_claude_md():
     assert policy.FAN_IN_CRITICAL_PAYERS_24H == {Flow.PF_PF: 3, Flow.PF_PJ: 10, Flow.PJ_PF: 3, Flow.PJ_PJ: 10}
     assert policy.REFERENCE_CEILING_MINOR == {"individual_new_account": 100000, "individual": 300000, "company": 2000000}
     assert policy.REFERENCE_CEILING_NEW_ACCOUNT_DAYS == 90
+
+
+def test_test_pix_and_recurrent_beneficiary_parameters_are_declared():
+    assert policy.TEST_PIX_MAX_AMOUNT_MINOR == 1000
+    assert policy.TEST_PIX_WINDOW_MINUTES == 15
+    assert policy.TEST_PIX_FOLLOWUP_MIN_AMOUNT_MINOR == 20000
+    assert policy.TEST_PIX_FOLLOWUP_MULTIPLIER == 20
+    assert policy.RECURRENT_BENEFICIARY_MIN_APPROVED == 2
+    assert policy.RECURRENT_BENEFICIARY_MIN_AGE_HOURS == 24
+
+
+def test_trust_downgrades_the_doubts_it_resolves_first():
+    assert policy.TRUST_DOWNGRADE_AXIS_ORDER == ("who", "how", "where")
