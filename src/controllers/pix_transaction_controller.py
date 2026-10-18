@@ -76,6 +76,34 @@ def _utc_offset_minutes(moment: datetime) -> int:
     return int(moment.utcoffset().total_seconds() // 60)
 
 
+def _flow(payload: dict) -> Flow:
+    return FLOWS[
+        (
+            _person_type(payload["source_account"]["owner"]["document_number"]),
+            _person_type(payload["destination_account"]["owner"]["document_number"]),
+        )
+    ]
+
+
+def _transaction_fields(payload: dict) -> dict:
+    transaction_date = datetime.fromisoformat(payload["transaction_date"])
+    source = payload["source"]
+    geolocation = source.get("geolocation") or {}
+    return {
+        "transaction_id": payload["id"],
+        "payload_hash": payload_hash(payload),
+        "amount_minor": payload["amount"],
+        "transaction_date": transaction_date,
+        "utc_offset_minutes": _utc_offset_minutes(transaction_date),
+        "device_id": source["device_id"],
+        "channel": source["channel"],
+        "ip_address": source["ip"],
+        "latitude": geolocation.get("latitude"),
+        "longitude": geolocation.get("longitude"),
+        "raw_payload": payload,
+    }
+
+
 class PixTransactionController:
     def __init__(self, session: Session) -> None:
         self.session = session
@@ -90,38 +118,26 @@ class PixTransactionController:
         started_at = time.perf_counter()
         validate_json(payload, POST_SCHEMA_PATH)
 
+        pix_transaction = self._record_transaction(payload)
+        result = _fake_engine_result()
+        pix_analysis = self._record_analysis(pix_transaction.id, result, _flow(payload), started_at)
+        self.session.commit()
+        return self._to_dto(pix_analysis.id)
+
+    def _record_transaction(self, payload: dict):
         source_account = self._upsert_account(OWN_PARTICIPANT, payload["source_account"])
         destination_account = self._upsert_account(
             payload["destination_account"]["participant"], payload["destination_account"]
         )
-        transaction_date = datetime.fromisoformat(payload["transaction_date"])
-        source = payload["source"]
-        geolocation = source.get("geolocation") or {}
-        pix_transaction = self.transactions.create(
-            transaction_id=payload["id"],
-            payload_hash=payload_hash(payload),
-            amount_minor=payload["amount"],
-            transaction_date=transaction_date,
-            utc_offset_minutes=_utc_offset_minutes(transaction_date),
+        return self.transactions.create(
             source_account_id=source_account.id,
             destination_account_id=destination_account.id,
-            device_id=source["device_id"],
-            channel=source["channel"],
-            ip_address=source["ip"],
-            latitude=geolocation.get("latitude"),
-            longitude=geolocation.get("longitude"),
-            raw_payload=payload,
+            **_transaction_fields(payload),
         )
 
-        flow = FLOWS[
-            (
-                _person_type(payload["source_account"]["owner"]["document_number"]),
-                _person_type(payload["destination_account"]["owner"]["document_number"]),
-            )
-        ]
-        result = _fake_engine_result()
+    def _record_analysis(self, pix_transaction_id: int, result: EngineResult, flow: Flow, started_at: float):
         pix_analysis = self.analyses.create(
-            pix_transaction_id=pix_transaction.id,
+            pix_transaction_id=pix_transaction_id,
             status=result.decision.value,
             decision_basis=result.decision_basis.value,
             policy_version=result.policy_version,
@@ -133,8 +149,7 @@ class PixTransactionController:
             pix_analysis.id,
             {"who": result.who.level.value, "how": result.how.level.value, "where": result.where.level.value},
         )
-        self.session.commit()
-        return self._to_dto(pix_analysis.id)
+        return pix_analysis
 
     def _to_dto(self, pix_analysis_id: int) -> dict:
         pix_analysis, status, decision_basis = self.analyses.find_by_id(pix_analysis_id)
