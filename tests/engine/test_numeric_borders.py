@@ -1,5 +1,6 @@
 import pytest
 
+from src.engine import policy
 from src.engine.engine import evaluate
 from src.engine.risk_context import Decision, DecisionBasis, DeviceTrust, Flow, RiskLevel, RuleOutcome
 from tests.engine.conftest import local_datetime, make_context, rule_of
@@ -138,3 +139,15 @@ def test_payer_maturity_phase_border(approved_count, relationship_days, phase):
     context = make_context(payer={"approved_count": approved_count, "relationship_days": relationship_days})
 
     assert evaluate(context).maturity_phase == phase
+
+
+def test_new_account_texts_follow_the_policy_parameter(monkeypatch):
+    monkeypatch.setattr(policy, "DESTINATION_NEW_ACCOUNT_DAYS", 45)
+
+    result = evaluate(make_context(transaction={"destination_account_age_days": 40}))
+
+    rule = rule_of(result, "WHERE_DESTINATION_NEW_ACCOUNT")
+    assert rule.outcome == RuleOutcome.FIRED
+    assert rule.threshold == {"destination_account_age_days": 45}
+    assert "45" in rule.description
+    assert "45" in rule.translation

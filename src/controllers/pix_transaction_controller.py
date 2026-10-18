@@ -1,8 +1,8 @@
-import os
 import time
 from datetime import datetime
 from typing import Tuple
 
+from constants import OWN_PARTICIPANT
 from controllers.base_controller import BaseController
 from controllers.risk_context_builder import build_risk_context, person_type_of, utc_offset_minutes_of
 from dtos import PixAnalysisDto
@@ -19,8 +19,6 @@ from repositories import (
 from src.engine.engine import evaluate
 from src.engine.risk_context import EngineResult, RiskContext
 from utils.payload_hash import payload_hash
-
-OWN_PARTICIPANT = os.environ.get("OWN_PARTICIPANT", "99999999")
 
 
 def _features(result: EngineResult, context: RiskContext) -> dict:
