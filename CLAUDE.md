@@ -70,7 +70,7 @@ Não perguntamos "quão arriscado é". Perguntamos **qual é a dúvida**:
 - **JSON Schema na porta** valida a forma antes de qualquer consulta (400, códigos granulares `RNV000007`–`RNV000010`). Pydantic não é usado para contrato de entrada. O controller valida o sentido (422/409).
 - **Enumeradores são tabelas de lookup** (`enumerator` UK + FK), nunca texto solto, `CHECK IN (...)` nem `ENUM` nativo. Valores em **minúsculo** (`approved`, `suspicious`, `pf_pf`); códigos (`RNV001039`, `HOW_NIGHT_LIMIT_EXCEEDED`) em maiúsculo.
 - **Datas com fuso:** toda coluna de data é `TIMESTAMPTZ` (`DateTime(timezone=True)`). O fuso original do payload fica em `utc_offset_minutes`; a hora local é derivada.
-- **Chaves:** `id` interno `SERIAL` (nunca exposto); chave pública `CHAR(36)` UUID v4 (`analysis_key`, o `key` da resposta). O `id` do Pix vem do cliente e é guardado em `transaction_id`.
+- **Chaves:** `id` interno `BIGSERIAL` nas tabelas de volume (`SERIAL` nos lookups), nunca exposto e nunca usado em regra de negócio; ele é a PK e o alvo das FKs (8 bytes, inserção sequencial no fim do índice). Chave pública UUID v4 no tipo nativo `UUID` (16 bytes, `DEFAULT gen_random_uuid()`, `uq_pix_analysis_analysis_key`): `analysis_key`, o `key` da resposta. Nunca `CHAR(36)` (índice ~45% maior e comparação por collation) e nunca UUID como PK ou FK (v4 é aleatório: cada insert cai numa página qualquer do índice). O `id` do Pix vem do cliente e é guardado em `transaction_id`.
 - **Dinheiro em centavos inteiros** (`*_minor`, `BIGINT`). O contrato externo chama `amount`; a coluna é `amount_minor`. Nunca float, nunca `round()`.
 - **CPF/CNPJ mascarados** (pattern com pontuação; CNPJ aceita o formato alfanumérico). Coluna `VARCHAR(18)`.
 - **Append-only:** transação e análise nunca mudam. Memória do motor (`account_device`, `account_counterparty`) é mutável e reconstruível a partir do registro.
@@ -111,17 +111,22 @@ Não perguntamos "quão arriscado é". Perguntamos **qual é a dúvida**:
 1. Schema → 400
 2. Validação de sentido no controller: dígito verificador CPF/CNPJ (422 `RNV001002`/`RNV001020`), `opening_date` ≤ `transaction_date`, `transaction_date` ≤ agora + 5 min, origem ≠ destino, IP que não parseia com `ipaddress` (422, `RNV001040`–`RNV001043`), conta conhecida com outro titular/abertura (409 `RNV001044`)
 3. Insert do Pix (idempotência, ver Convenções)
-4. Upsert das contas (origem usa `OWN_PARTICIPANT`); ISPB fora da lista não é erro: cria o participante com `listed = false` e vira o sinal `WHERE_UNKNOWN_PARTICIPANT`
+4. Upsert de titulares e contas (`account_holder` por documento, `account` por banco + agência + número; origem usa `OWN_PARTICIPANT`); ISPB fora da lista não é erro: cria o participante com `listed = false` e vira o sinal `WHERE_UNKNOWN_PARTICIPANT`
 5. Repositories montam o `RiskContext`
 6. `engine.evaluate(context)` → `EngineResult`
-7. Grava `pix_analysis`, `pix_analysis_rule` (todas as regras avaliadas: `fired`/`not_fired`/`unavailable`) e a memória (só se `approved`) → `commit`
+7. Grava `pix_analysis`, `pix_analysis_axis` (3 linhas), `pix_analysis_rule` (todas as regras avaliadas: `fired`/`not_fired`/`unavailable`) e a memória (só se `approved`) → `commit`
 8. `201 {key, status, metadata}`
 
 ## Modelo de dados (detalhe em `docs/modelo-de-dados.md`)
-- Lookup: `pix_participant`, `person_type`, `analysis_status`, `risk_level`, `rule_axis`, `rule_outcome`
-- Registro: `account` · `pix_transaction` · `pix_analysis` (1:1) · `pix_analysis_rule`
+- Lookup: `pix_participant`, `person_type`, `analysis_status`, `decision_basis`, `risk_level`, `rule_axis`, `rule_outcome`
+- Registro: `account_holder` (quem: documento + PF/PJ) · `account` (a conta: banco + agência + número + abertura, aponta para o titular) · `pix_transaction` · `pix_analysis` (1:1, a decisão) · `pix_analysis_axis` (3 linhas por análise: nível de who/how/where) · `pix_analysis_rule` (uma linha por regra avaliada)
 - Memória: `account_device`, `account_counterparty` (só `approved`)
 - View `pix_history` (transação + status)
+- **Tabelas que crescem com o volume usam `BIGSERIAL`/`BIGINT`** (`account_holder`, `account`, `pix_transaction`, `pix_analysis`, `pix_analysis_axis`, `pix_analysis_rule`, `account_device`, `account_counterparty`) e toda FK para elas é `BIGINT`. Lookup fica em `SERIAL`/`INTEGER`.
+- **Índices de janela são *covering*** (`INCLUDE`): as consultas de histórico leem só o índice (Index Only Scan, sem ir à tabela). Consulta nova de janela que precise de outra coluna: me pergunte antes de ir ao heap.
+- **Toda consulta do caminho do POST/GET usa um identificador forte com índice** (chave natural `UNIQUE` ou índice `(entidade, transaction_date DESC)`). A tabela "caminho de acesso" em `docs/modelo-de-dados.md` lista cada consulta e o índice que ela usa; repository novo entra nessa tabela no mesmo PR. Consulta sem índice não passa na revisão.
+- **Nenhuma regra de negócio usa o `id` serial:** não ordenar por `id`, não comparar `id`, não inferir "anterior/último" pelo `id` (o serial tem buracos e aceita insert manual). Ordem é sempre por `transaction_date`; identidade de negócio é a chave natural (`transaction_id`, ISPB + agência + conta, documento) ou a chave pública UUID.
+- **Coluna mora na tabela da qual ela fala.** Antes de criar coluna, ler o nome da tabela e perguntar: "isso descreve essa coisa?". Documento e PF/PJ descrevem a pessoa (`account_holder`), não a conta; nível de cada eixo descreve um eixo da análise (`pix_analysis_axis`), não a análise.
 
 ### O que conta em cada consulta
 | Uso | Status considerados | Por quê |

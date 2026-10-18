@@ -16,8 +16,8 @@ Arquivos de contrato (só o Ramon altera): `database/database.sql`, `src/engine/
 | T02 | Scaffold copiado do `banco/` (Docker, compose, requirements, CI, errors, utils, middlewares, harness) | BAIXA | Natalia | Ramon | — | 50 | 02:10 | a fazer |
 | T03 | Esqueleto do motor + molde: `policy.py`, `evaluate`, matriz, pisos, confiança, cold start, fases, regra-molde `HOW_NIGHT_LIMIT_EXCEEDED` | ALTA | Ramon (Chaz) | Victoria | T01 | 50 | 02:30 | a fazer |
 | T04 | README: esqueleto exato do modelo + "Como o motor de decisão funciona" + "Como as regras viram decisão" + cabeçalho e formato da tabela de Regras | ALTA | Ramon (Hann) | Victoria | — | 40 | 02:00 | a fazer |
-| T05 | `POST /pix/transaction` com motor de mentira: resource, controller, repositories de gravação, DTO, formato do `metadata` | MÉDIA | Victoria | Ramon | T01, T02, T06 | 105 | 03:00 | a fazer |
-| T06 | Models SQLAlchemy a partir do `database.sql` (12 tabelas) | BAIXA | Natalia | Ramon | T02 | 40 | 02:50 | a fazer |
+| T05 | `POST /pix/transaction` com motor de mentira: resource, controller, repositories de gravação (titular, conta, Pix, análise, 3 eixos), DTO, formato do `metadata` | MÉDIA | Victoria | Ramon | T01, T02, T06 | 105 | 03:00 | a fazer |
+| T06 | Models SQLAlchemy a partir do `database.sql` (15 tabelas: + `account_holder`, `decision_basis`, `pix_analysis_axis`; PK/FK `BigInteger` nas de volume; `analysis_key` `UUID`) | BAIXA | Natalia | Ramon | T02 | 50 | 03:00 | a fazer |
 | T07 | `GET /pix/transaction/{id}` (200 / 404 `RNV001039`) + seção `## Contrato da API` do README | MÉDIA | Victoria | Ramon | T05 | 30 | 03:30 | a fazer |
 | T08 | Regras WHERE do payload: `WHERE_DESTINATION_NEW_ACCOUNT`, `WHERE_UNKNOWN_PARTICIPANT` | BAIXA | Natalia | Ramon | T03 | 40 | 03:30 | a fazer |
 | T09 | Idempotência com concorrência: `IntegrityError` → rollback → hash → 200 / 422 `RNV001024`; 10x o mesmo `id` → uma análise | ALTA | Ramon (Chaz) | Victoria | T05 | 45 | 04:15 | a fazer |
@@ -102,7 +102,7 @@ Ordem: T01 → T03 (+ T04 em paralelo) → R1 → T09 + T10 → R2 (T15 em paral
 - **T04** · arquivos: `README.md` · pronto: títulos exatamente iguais ao modelo, na ordem; matriz, pisos, confiança e cold start descritos; seção "Como rodar e testar" com o marcador para o T17 · README: esqueleto + duas seções.
 - **T09** · arquivos: `src/repositories/pix_transaction_repository.py` (caminho do insert), `src/controllers/pix_transaction_controller.py` (caminho do insert), `tests/integration/pix_transaction/test_post_idempotency.py` · pronto: retry idêntico → 200 com corpo igual; 10x o mesmo `id` (sequencial e em threads) → uma análise; payload diferente → 422 `RNV001024` · README: `## Contrato da API` (linha do 200/`RNV001024`, combinar com a Victoria).
 - **T10** · arquivos: `src/controllers/risk_context_builder.py`, `src/controllers/pix_transaction_controller.py` (troca do motor de mentira), `src/repositories/pix_analysis_rule_repository.py`, `tests/integration/pix_transaction/test_post_decision.py` · pronto: T13 verde; uma linha em `pix_analysis_rule` por regra avaliada · README: nenhuma.
-- **T15** · arquivos: `src/repositories/risk_history_repository.py`, `src/controllers/risk_context_builder.py`, `tests/integration/pix_transaction/test_history_windows.py` · pronto: cada campo de histórico do P0 com teste de integração; toda consulta com igualdade indexada + janela ≤ 90 dias anterior ao Pix; `latency_ms` < 100 · README: nenhuma (o "o que conta em cada consulta" entra em "Como as regras viram decisão" no T18).
+- **T15** · arquivos: `src/repositories/risk_history_repository.py`, `src/controllers/risk_context_builder.py`, `tests/integration/pix_transaction/test_history_windows.py`, `docs/modelo-de-dados.md` (tabela Caminho de acesso) · cada consulta usa o índice covering da linha correspondente (Index Only Scan, `Heap Fetches: 0`); device conta `account_holder` distintos, não contas · pronto: cada campo de histórico do P0 com teste de integração; toda consulta com igualdade indexada + janela ≤ 90 dias anterior ao Pix; `latency_ms` < 100 · README: nenhuma (o "o que conta em cada consulta" entra em "Como as regras viram decisão" no T18).
 - **T18** · arquivos: `README.md` (seção "Como as regras viram decisão" + revisão da tabela) · pronto: exemplo de ponta a ponta com o `metadata` real da API.
 - **T19** · arquivos: `tests/unit/test_readme_rules.py` · pronto: falha se faltar ou sobrar `rule_code` ou se um valor divergir.
 - **T20** · arquivos: `src/repositories/{account_device,account_counterparty}_repository.py`, `src/controllers/pix_transaction_controller.py`, `src/controllers/risk_context_builder.py`, `src/engine/trust.py`, testes de integração e de unidade correspondentes · README: linhas `TRUST_*`.
@@ -119,6 +119,12 @@ Ordem: **T02 → T06 → T08 → T11 → T13 → T14 → T17** (P0) → T22 → 
 Primeiro passo (01:15): branch `feat/T02-scaffold`, copiar a infraestrutura do `banco/` do `oberico/desafio_qitech`.
 Depende de: Ramon (T03 molde para T08/T14), Victoria (T05/T07 para T11, T13, T17).
 Dependem dela: todos (T02 e T06 destravam a API).
+
+## Mudanças de 02:30 (revisão do tech lead + índices)
+- Schema: `account_holder` (titular separado da conta), `pix_analysis_axis` (1 linha por eixo), `decision_basis` como lookup, `BIGSERIAL`/`BIGINT` nas tabelas de volume, constraints nomeadas.
+- `analysis_key` virou `UUID` nativo com `DEFAULT gen_random_uuid()` (era `CHAR(36)`). O UUID continua só como chave pública; a PK e as FKs seguem `BIGINT`.
+- Índices de janela agora são *covering* (`INCLUDE`), e o `idx_pix_analysis_status` saiu. Conferido com `EXPLAIN ANALYZE` com 1 milhão de Pix: todas as consultas do caminho síncrono em Index Only Scan, < 0,1 ms.
+- Afeta: T05, T06, T07, T12, T15, T16 (prompts em `docs/tarefas/` já atualizados). Regra nova: repository novo adiciona linha na tabela "Caminho de acesso" de `docs/modelo-de-dados.md` no mesmo PR.
 
 ## Decisões em aberto
 
