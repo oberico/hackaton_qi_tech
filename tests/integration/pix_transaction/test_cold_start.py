@@ -92,7 +92,7 @@ class TestColdStart:
         assert response["metadata"]["payer_maturity_phase"] == 0
         assert {"HOW_NIGHT_LIMIT_EXCEEDED", "WHERE_DESTINATION_NEW_ACCOUNT"} <= reason_codes(response)
 
-    @pytest.mark.xfail(strict=True, reason="until T14 and T15: fan-in needs the destination window query")
+    @pytest.mark.xfail(strict=True, reason="until T15: fan-in needs the destination window query")
     def test_first_pix_to_a_destination_with_many_payers_is_rejected_by_the_destination(self):
         earlier = datetime.now(timezone.utc) - timedelta(hours=2)
         destination = new_destination(earlier)
@@ -107,7 +107,7 @@ class TestColdStart:
         assert response["metadata"]["axes"]["where"] == "critical"
         assert "WHERE_DESTINATION_FAN_IN" in reason_codes(response)
 
-    @pytest.mark.xfail(strict=True, reason="until T16 and T15: compromised device needs the device window query")
+    @pytest.mark.xfail(strict=True, reason="until T15: compromised device needs the device window query")
     def test_first_pix_from_a_device_used_by_many_holders_is_rejected_by_the_device(self):
         earlier = datetime.now(timezone.utc) - timedelta(hours=2)
         device_id = RandomGenerator.device_id()
@@ -122,7 +122,7 @@ class TestColdStart:
         assert response["metadata"]["axes"]["who"] == "critical"
         assert "WHO_DEVICE_COMPROMISED" in reason_codes(response)
 
-    @pytest.mark.xfail(strict=True, reason="until T14 and T15: rejections need the destination window query")
+    @pytest.mark.xfail(strict=True, reason="until T15: rejections need the destination window query")
     def test_first_pix_to_a_destination_with_rejections_from_distinct_payers_is_rejected_by_the_destination(self):
         night = last_night_before_now()
         destination = new_destination(night)
