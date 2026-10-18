@@ -20,13 +20,13 @@ Não perguntamos um score mágico genérico de 0 a 1000 ("quão arriscado é"). 
 flowchart TD
     Pix["Transação Pix (POST /pix/transaction)"] --> Eixos{"Qual é a dúvida?"}
     
-    Eixos -->|WHO: Canal, Device, IP| D1["É o cliente mesmo?"]
-    Eixos -->|HOW: Valor, Horário, Velocity| D2["É normal para o cliente?"]
-    Eixos -->|WHERE: Idade do Destino, STR, Fan-in| D3["Para onde o dinheiro está indo?"]
+    Eixos -->|"WHO: Canal, Device, IP"| D1["É o cliente mesmo?"]
+    Eixos -->|"HOW: Valor, Horário, Velocity"| D2["É normal para o cliente?"]
+    Eixos -->|"WHERE: Idade do Destino, STR, Fan-in"| D3["Para onde o dinheiro está indo?"]
     
-    D1 -->|Sim/Dúvida| Sol1["2FA Resolve (Biometria / Push)"]
-    D2 -->|Sim/Dúvida| Sol2["2FA Resolve (Confirmação do Pagador)"]
-    D3 -->|Dúvida no Destino| Sol3["2FA NÃO RESOLVE!<br/>(A vítima aprova o próprio golpe)"]
+    D1 -->|"Sim / Dúvida"| Sol1["2FA Resolve (Biometria / Push)"]
+    D2 -->|"Sim / Dúvida"| Sol2["2FA Resolve (Confirmação do Pagador)"]
+    D3 -->|"Dúvida no Destino"| Sol3["2FA NÃO RESOLVE!<br/>(A vítima aprova o próprio golpe)"]
     
     Sol1 --> Matriz{"Matriz de Decisão"}
     Sol2 --> Matriz
@@ -43,18 +43,18 @@ flowchart TD
 
 ```mermaid
 flowchart LR
-    Client["Serviço Chamador (RNV)"] -->|POST /pix/transaction| Resource["Resource (FastAPI)"]
-    Resource -->|1. Valida JSON Schema| Resource
-    Resource -->|2. Instancia sem Sessão| Controller["PixTransactionController"]
-    Controller -->|3. Valida Semântica 422/409| Controller
-    Controller -->|4. Upsert Contas/Titulares| Repositories["Repositories"]
-    Controller -->|5. Insert Atômico Pix| Repositories
-    Repositories -->|6. Consultas Index-Only| DB[(PostgreSQL)]
-    Controller -->|7. Monta RiskContext| Engine["Engine (Função Pura)"]
-    Engine -->|8. evaluate()| Controller
-    Controller -->|9. Grava Análise + Regras| Repositories
-    Controller -->|10. Reconstrói DTO| Resource
-    Resource -->|HTTP 201/200| Client
+    Client["Serviço Chamador (RNV)"] -->|"POST /pix/transaction"| Resource["Resource (FastAPI)"]
+    Resource -->|"1. Valida JSON Schema"| Resource
+    Resource -->|"2. Instancia sem Sessão"| Controller["PixTransactionController"]
+    Controller -->|"3. Valida Semântica 422/409"| Controller
+    Controller -->|"4. Upsert Contas/Titulares"| Repositories["Repositories"]
+    Controller -->|"5. Insert Atômico Pix"| Repositories
+    Repositories -->|"6. Consultas Index-Only"| DB[(PostgreSQL)]
+    Controller -->|"7. Monta RiskContext"| Engine["Engine (Função Pura)"]
+    Engine -->|"8. evaluate()"| Controller
+    Controller -->|"9. Grava Análise + Regras"| Repositories
+    Controller -->|"10. Reconstrói DTO"| Resource
+    Resource -->|"HTTP 201/200"| Client
 ```
 
 ### 1. Camadas Estritas (Adjacent Layers Pattern)
