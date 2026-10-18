@@ -143,7 +143,7 @@ class PixTransactionController:
         )
 
     def _upsert_account(self, ispb: str, account_data: dict):
-        participant = self.participants.find_by_ispb(ispb)
+        participant = self.participants.get_or_create(ispb)
         holder = self.holders.get_or_create(
             account_data["owner"]["document_number"], _person_type(account_data["owner"]["document_number"]).value
         )
