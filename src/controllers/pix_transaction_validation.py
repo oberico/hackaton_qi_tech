@@ -5,26 +5,18 @@ from constants import OWN_PARTICIPANT
 from errors import (
     AccountConflict,
     AccountOpenedAfterTransaction,
-    InvalidCnpj,
-    InvalidCpf,
     InvalidIpAddress,
     SourceAndDestinationAccountsAreTheSame,
     TransactionDateInFuture,
 )
-from utils.cnpj import is_valid_cnpj
-from utils.cpf import is_valid_cpf
+from utils.document import validate_document
 
 FUTURE_TOLERANCE_MINUTES = 5
 
 
 def validate_document_numbers(payload: dict) -> None:
     for account_key in ("source_account", "destination_account"):
-        doc = payload[account_key]["owner"]["document_number"]
-        if "/" in doc:
-            if not is_valid_cnpj(doc):
-                raise InvalidCnpj()
-        elif not is_valid_cpf(doc):
-            raise InvalidCpf()
+        validate_document(payload[account_key]["owner"]["document_number"])
 
 
 def validate_opening_dates(payload: dict) -> None:

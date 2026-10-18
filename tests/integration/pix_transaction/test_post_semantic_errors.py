@@ -3,14 +3,12 @@ from datetime import datetime, timedelta, timezone
 from tests.utils import PayloadGenerator, RandomGenerator, RequestGenerator
 
 ERROR_FIELDS = {"title", "description", "translation", "code"}
-INVALID_CPF = "111.222.333-44"
-INVALID_CNPJ = "11.222.333/0001-44"
 
 
 class TestPostSemanticErrors:
     def test_invalid_source_cpf_returns_422_rnv001002(self):
         payload = PayloadGenerator.create_challenge_example_payload()
-        payload["source_account"]["owner"]["document_number"] = INVALID_CPF
+        payload["source_account"]["owner"]["document_number"] = RandomGenerator.invalid_cpf()
 
         status, response = RequestGenerator.POST_pix_transaction(payload)
 
@@ -24,7 +22,7 @@ class TestPostSemanticErrors:
 
     def test_invalid_destination_cpf_returns_422_rnv001002(self):
         payload = PayloadGenerator.create_challenge_example_payload()
-        payload["destination_account"]["owner"]["document_number"] = INVALID_CPF
+        payload["destination_account"]["owner"]["document_number"] = RandomGenerator.invalid_cpf()
 
         status, response = RequestGenerator.POST_pix_transaction(payload)
 
@@ -38,7 +36,7 @@ class TestPostSemanticErrors:
 
     def test_invalid_source_cnpj_returns_422_rnv001020(self):
         payload = PayloadGenerator.create_challenge_example_payload()
-        payload["source_account"]["owner"]["document_number"] = INVALID_CNPJ
+        payload["source_account"]["owner"]["document_number"] = RandomGenerator.invalid_cnpj()
 
         status, response = RequestGenerator.POST_pix_transaction(payload)
 
@@ -52,7 +50,7 @@ class TestPostSemanticErrors:
 
     def test_invalid_destination_cnpj_returns_422_rnv001020(self):
         payload = PayloadGenerator.create_challenge_example_payload()
-        payload["destination_account"]["owner"]["document_number"] = INVALID_CNPJ
+        payload["destination_account"]["owner"]["document_number"] = RandomGenerator.invalid_cnpj()
 
         status, response = RequestGenerator.POST_pix_transaction(payload)
 
