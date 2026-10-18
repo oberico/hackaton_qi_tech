@@ -116,3 +116,147 @@ Teto do cliente = (n · teto_hist + 5 · teto_ref) / (n + 5), onde n é o númer
 ## Como rodar e testar
 
 [Marcador: seção completa na tarefa T17.]
+
+## Contrato da API
+
+O antifraude é chamado por outros serviços (como o Transferências do RNV), nunca pelo cliente final. Por isso toda rota de Pix exige o header `INTERNAL-TOKEN`; sem ele, ou com o valor errado, a resposta é `403 RNV000002`. Só `/` e `/health_check` são públicas. Localmente a API sobe em `http://localhost:8001`.
+
+| Rota | Acesso | Sucesso | Erros |
+|---|---|---|---|
+| `POST /pix/transaction` | serviço (`INTERNAL-TOKEN`) | `201 {key, status, metadata}`; retry idêntico `200` | 400 (`RNV000001`, `RNV000007`–`RNV000010`), 403 `RNV000002`, 422 (`RNV001002`, `RNV001020`, `RNV001024`, `RNV001040`–`RNV001043`), 409 `RNV001044` |
+| `GET /pix/transaction/{id}` | serviço (`INTERNAL-TOKEN`) | `200 {key, status, metadata}` | 403 `RNV000002`, 404 `RNV001039` |
+| `/`, `/health_check` | público | `200` | |
+
+### POST /pix/transaction
+
+Recebe um Pix, decide `approved`, `two_factor_required` ou `rejected` e grava a análise.
+
+**Corpo de entrada**
+
+| Campo | Tipo | Regra |
+|---|---|---|
+| `id` | texto | `id` do Pix, definido por quem chama; 1 a 64 caracteres entre letras, números, `.`, `_`, `:` e `-` |
+| `amount` | inteiro | valor em **centavos**, de 1 a 100.000.000.000 (R$ 1.500,00 = `150000`) |
+| `transaction_date` | texto | data e hora ISO 8601 **com fuso** (`2026-10-17T22:15:00-03:00`) |
+| `source_account` | objeto | conta do pagador: `branch` (4 dígitos), `account_number` (1 a 20 dígitos), `opening_date` (data com fuso) e `owner.document_number` |
+| `destination_account` | objeto | conta do beneficiário: os mesmos campos da origem mais `participant` (ISPB de 8 dígitos) |
+| `source` | objeto | `device_id` (até 128 caracteres), `channel` (2 a 30 letras minúsculas ou `_`), `ip` e, opcional, `geolocation` com `latitude` e `longitude` |
+
+`document_number` vai mascarado: CPF `123.456.789-09` ou CNPJ `12.345.678/0001-95` (o CNPJ também aceita o formato alfanumérico). O ISPB do destino fora da lista do STR não é erro: vira o sinal de risco `WHERE_UNKNOWN_PARTICIPANT`.
+
+**Exemplo**
+
+```bash
+curl -X POST http://localhost:8001/pix/transaction   -H "INTERNAL-TOKEN: internal-token-dev"   -H "Content-Type: application/json"   -d '{
+    "id": "pix-000123",
+    "amount": 150000,
+    "transaction_date": "2026-10-17T22:15:00-03:00",
+    "source_account": {
+      "branch": "0001",
+      "account_number": "88213",
+      "opening_date": "2025-03-02T10:00:00-03:00",
+      "owner": { "document_number": "123.456.789-09" }
+    },
+    "destination_account": {
+      "participant": "60701190",
+      "branch": "3675",
+      "account_number": "10442",
+      "opening_date": "2026-10-10T09:00:00-03:00",
+      "owner": { "document_number": "987.654.321-00" }
+    },
+    "source": {
+      "device_id": "dvc-9f2c71a8",
+      "channel": "app",
+      "ip": "198.51.100.23",
+      "geolocation": { "latitude": -23.56, "longitude": -46.65 }
+    }
+  }'
+```
+
+**Resposta `201`**
+
+```json
+{
+  "key": "de3341f1-ff44-4118-8d9b-fd66f2a1b58c",
+  "status": "rejected",
+  "metadata": {
+    "policy_version": "2026.10.18-1",
+    "flow": "pf_pf",
+    "payer_maturity_phase": 0,
+    "decision_basis": "two_suspicious_axes",
+    "axes": { "who": "ok", "how": "suspicious", "where": "suspicious" },
+    "reasons": [
+      {
+        "code": "HOW_NIGHT_LIMIT_EXCEEDED",
+        "axis": "how",
+        "level": "suspicious",
+        "observed": { "night_amount": 150000 },
+        "threshold": { "night_amount": 100000 },
+        "description": "Night-time amount between individuals above R$ 1,000.",
+        "translation": "Soma noturna entre pessoas físicas acima de R$ 1.000."
+      },
+      {
+        "code": "WHERE_DESTINATION_NEW_ACCOUNT",
+        "axis": "where",
+        "level": "suspicious",
+        "observed": { "destination_account_age_days": 7.55 },
+        "threshold": { "destination_account_age_days": 30 },
+        "description": "Destination account opened less than 30 days ago.",
+        "translation": "Conta de destino aberta há menos de 30 dias."
+      }
+    ],
+    "floors": ["FLOOR_UNREGISTERED_DEVICE", "FLOOR_NIGHT_LIMIT"],
+    "trust": []
+  }
+}
+```
+
+- `key`: chave pública da análise (UUID v4); o `id` interno nunca é exposto.
+- `status`: `approved`, `two_factor_required` ou `rejected`.
+- `metadata.decision_basis`: por que a decisão saiu assim (`critical_axis`, `two_suspicious_axes`, `single_suspicious_axis`, `regulatory_floor`, `trust_downgrade` ou `clean`).
+- `metadata.reasons`: cada regra que disparou, com o que foi observado, o limite e a explicação em inglês (`description`) e em português (`translation`).
+
+**Retry com o mesmo `id`:** repetir o POST com o mesmo `id` e o mesmo corpo devolve `200` com a mesma análise, sem criar outra. Reusar o `id` com corpo diferente é `422 RNV001024`.
+
+### GET /pix/transaction/{id}
+
+Devolve a análise de um Pix já enviado. O `{id}` é o `id` que quem chama mandou no POST, e não a `key`.
+
+```bash
+curl http://localhost:8001/pix/transaction/pix-000123   -H "INTERNAL-TOKEN: internal-token-dev"
+```
+
+A resposta `200` é **idêntica** à do POST: a análise é gravada uma vez e nunca muda, então o GET reconstrói o mesmo `{key, status, metadata}`. Um `id` que nunca foi enviado devolve `404 RNV001039`.
+
+### Formato dos erros
+
+Todo erro tem os mesmos quatro campos: `title` e `description` em inglês, `translation` em português e `code` estável entre os serviços do RNV.
+
+```json
+{
+  "title": "Pix Transaction Not Found",
+  "description": "No Pix transaction was found with the given id.",
+  "translation": "Nenhum Pix foi encontrado com o id informado.",
+  "code": "RNV001039"
+}
+```
+
+### Erros das rotas de Pix
+
+| Código | HTTP | Quando |
+|---|---|---|
+| `RNV000001` | 400 | corpo que não é objeto JSON |
+| `RNV000002` | 403 | `INTERNAL-TOKEN` ausente ou errado |
+| `RNV000007` | 400 | campo obrigatório ausente |
+| `RNV000008` | 400 | campo não permitido (extra) |
+| `RNV000009` | 400 | tipo ou formato inválido (CPF/CNPJ sem máscara, data sem fuso, data impossível, ISPB fora de 8 dígitos) |
+| `RNV000010` | 400 | valor fora do limite (`amount` menor que 1, latitude ou longitude fora da faixa, tamanhos) |
+| `RNV001002` | 422 | CPF com dígitos inválidos |
+| `RNV001020` | 422 | CNPJ inválido |
+| `RNV001024` | 422 | mesmo `id` de Pix reusado com conteúdo diferente |
+| `RNV001039` | 404 | Pix com esse `id` não encontrado (GET) |
+| `RNV001040` | 422 | `opening_date` da conta depois de `transaction_date` |
+| `RNV001041` | 422 | `transaction_date` no futuro (tolerância de 5 minutos) |
+| `RNV001042` | 422 | conta de origem igual à de destino |
+| `RNV001043` | 422 | IP inválido |
+| `RNV001044` | 409 | conta já conhecida chegando com outro titular ou outra data de abertura |
