@@ -23,7 +23,7 @@ Arquivos de contrato (só o Ramon altera): `database/database.sql`, `src/engine/
 | T09 | Idempotência com concorrência: `IntegrityError` → rollback → hash → 200 / 422 `RNV001024`; 10x o mesmo `id` → uma análise | ALTA | Ramon (Chaz) | Victoria | T05 | 45 | 04:15 | pronto |
 | T10 | Motor real no controller: `RiskContext` montado do payload (flow, idades, listed, IP privado), `evaluate`, gravação de `pix_analysis_rule` (todas as regras avaliadas) | ALTA | Ramon (Chaz) | Victoria | T03, T05 | 60 | 04:30 | pronto |
 | T11 | Testes de integração dos erros de formato: 400 (`RNV000001`, `RNV000007`–`010`) e 403 `RNV000002` no POST e no GET | BAIXA | Natalia | Victoria | T05, T07 | 40 | 04:15 | pronto (coberto pelo refactor: 400 granulares e 403 por HTTP em `test_pix_transaction_create.py`) |
-| T12 | Validações de sentido: 422 `RNV001002`, `RNV001020`, `RNV001040`–`043`; 409 `RNV001044` | MÉDIA | Victoria | Ramon | T07 | 70 | 04:45 | a fazer |
+| T12 | Validações de sentido: 422 `RNV001002`, `RNV001020`, `RNV001040`–`043`; 409 `RNV001044` | MÉDIA | Victoria | Ramon | T07 | 70 | 04:45 | fazendo |
 | T13 | Teste de integração: payload de exemplo do desafio → `rejected` (`two_suspicious_axes`) | BAIXA | Natalia | Victoria | T03, T05 | 20 | 04:30 | pronto |
 | T14 | Regras WHERE de histórico: `WHERE_DESTINATION_FAN_IN` (critical, por fluxo), `WHERE_DESTINATION_REJECTIONS` (critical, fundada suspeita) | BAIXA | Natalia | Ramon | T08 | 45 | 05:15 | pronto |
 | T15 | Consultas de janela que montam o `RiskContext` (velocity, soma noturna, soma de device novo, docs por device, fan-in, rejeições no destino, pagadores por IP) | ALTA | Ramon (Chaz) | Victoria | T06, T10 | 75 | 05:20 | pronto |
