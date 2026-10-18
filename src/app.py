@@ -13,7 +13,7 @@ from middlewares import (
     register_request_logger_middleware,
     register_session_manager_middleware,
 )
-from resources import HealthCheckResource
+from resources import HealthCheckResource, PixTransactionResource
 from utils.logger import setup_logging
 
 setup_logging()
@@ -56,6 +56,8 @@ register_request_logger_middleware(application)
 register_request_context_middleware(application)
 
 health_check_resource = HealthCheckResource()
+pix_transaction_resource = PixTransactionResource()
 
 application.add_api_route("/", health_check_resource.on_get_home, methods=["GET"])
 application.add_api_route("/health_check", health_check_resource.on_get_health_check, methods=["GET"])
+application.add_api_route("/pix/transaction", pix_transaction_resource.on_post_transaction, methods=["POST"])
