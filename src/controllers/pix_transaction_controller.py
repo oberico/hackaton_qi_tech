@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from constants import SCHEMAS_DIR
 from dtos import PixAnalysisDto
 from engine import policy
-from engine.risk_context import AxisResult, Decision, DecisionBasis, EngineResult, RiskLevel
+from engine.risk_context import AxisResult, Decision, DecisionBasis, EngineResult, Flow, PersonType, RiskLevel
 from repositories import (
     AccountHolderRepository,
     AccountRepository,
@@ -38,10 +38,18 @@ def _fake_engine_result() -> EngineResult:
     )
 
 
-def _features(result: EngineResult) -> dict:
+FLOWS = {
+    (PersonType.INDIVIDUAL, PersonType.INDIVIDUAL): Flow.PF_PF,
+    (PersonType.INDIVIDUAL, PersonType.COMPANY): Flow.PF_PJ,
+    (PersonType.COMPANY, PersonType.INDIVIDUAL): Flow.PJ_PF,
+    (PersonType.COMPANY, PersonType.COMPANY): Flow.PJ_PJ,
+}
+
+
+def _features(result: EngineResult, flow: Flow) -> dict:
     axes = (result.who, result.how, result.where)
     return {
-        "flow": None,
+        "flow": flow.value,
         "reasons": [
             {
                 "code": rule.code,
@@ -60,8 +68,8 @@ def _features(result: EngineResult) -> dict:
     }
 
 
-def _person_type(document_number: str) -> str:
-    return "company" if "/" in document_number else "individual"
+def _person_type(document_number: str) -> PersonType:
+    return PersonType.COMPANY if "/" in document_number else PersonType.INDIVIDUAL
 
 
 def _utc_offset_minutes(moment: datetime) -> int:
@@ -105,6 +113,12 @@ class PixTransactionController:
             raw_payload=payload,
         )
 
+        flow = FLOWS[
+            (
+                _person_type(payload["source_account"]["owner"]["document_number"]),
+                _person_type(payload["destination_account"]["owner"]["document_number"]),
+            )
+        ]
         result = _fake_engine_result()
         pix_analysis = self.analyses.create(
             pix_transaction_id=pix_transaction.id,
@@ -112,7 +126,7 @@ class PixTransactionController:
             decision_basis=result.decision_basis.value,
             policy_version=result.policy_version,
             payer_maturity_phase=result.maturity_phase,
-            features=_features(result),
+            features=_features(result, flow),
             latency_ms=int((time.perf_counter() - started_at) * 1000),
         )
         self.axes.create_all(
@@ -131,7 +145,7 @@ class PixTransactionController:
     def _upsert_account(self, ispb: str, account_data: dict):
         participant = self.participants.find_by_ispb(ispb)
         holder = self.holders.get_or_create(
-            account_data["owner"]["document_number"], _person_type(account_data["owner"]["document_number"])
+            account_data["owner"]["document_number"], _person_type(account_data["owner"]["document_number"]).value
         )
         return self.accounts.get_or_create(
             participant_id=participant.id,
