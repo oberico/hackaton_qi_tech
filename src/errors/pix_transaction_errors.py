@@ -21,3 +21,14 @@ class PixTransactionNotFound(QIException):
         description = "No Pix transaction was found with the given id."
         translation = "Nenhum Pix foi encontrado com o id informado."
         super().__init__(title, self.code, http_status, description, translation)
+
+
+class InvalidCpf(QIException):
+    code = "RNV001002"
+
+    def __init__(self) -> None:
+        title = "Invalid CPF"
+        http_status = 422
+        description = "The document number has invalid CPF check digits."
+        translation = "O CPF informado possui dígitos verificadores inválidos."
+        super().__init__(title, self.code, http_status, description, translation)
