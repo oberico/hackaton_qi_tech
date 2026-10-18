@@ -192,6 +192,7 @@ def payer_history(
         last_rejected_amount=latest_rejected_amount(summary.rejected_amounts_latest_first),
         known_devices_count=known_devices.known_devices_count,
         device_trust=device_trust_of(known_devices.device_first_approved_at, moment),
+        known_channels=list(summary.known_channels or []),
     )
 
 

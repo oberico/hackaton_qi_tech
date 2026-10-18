@@ -96,11 +96,41 @@ curl -s -H "INTERNAL-TOKEN: internal-token-dev" http://localhost:8001/pix/transa
 Retorna `HTTP 200` com a mesma análise imutável. IDs inexistentes retornam `404 RNV001039`.
 
 ### 4. Executar Testes Automatizados
+
+Os testes de integração são caixa-preta: falam com a API em `http://localhost:8001` e conferem o banco em `localhost:5434`. Por isso a stack do passo 1 precisa estar de pé antes de rodar o `pytest`.
+
+**4.1. Criar e ativar o ambiente virtual** (Python 3.11, a mesma versão da CI):
 ```bash
-pytest
+python3.11 -m venv .venv
+source .venv/bin/activate          # Windows (PowerShell): .venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+```
+
+**4.2. Instalar as dependências de teste** (`requirements-dev.txt` já inclui o `requirements.txt`, mais `pytest`, `pytest-cov`, `python-dotenv` e `flake8`):
+```bash
+pip install -r requirements-dev.txt
+```
+
+**4.3. Garantir que a API e o banco estão no ar:**
+```bash
+docker compose up -d --build
+curl -s http://localhost:8001/health_check   # {"status":"ok"}
+```
+
+**4.4. Rodar lint e testes** (com o venv ativo, na raiz do repositório):
+```bash
 flake8
+python -m pytest                         # suíte completa
+python -m pytest tests/engine            # só o motor (função pura, não precisa da API)
+python -m pytest tests/architecture      # só as regras de camadas (AST)
+python -m pytest tests/integration       # só a integração HTTP (precisa da stack no ar)
+python -m pytest --cov=src --cov-report=term-missing   # com cobertura
 ```
 Executa a suíte de 367 testes (integração HTTP caixa-preta, testes de motor e regras de arquitetura por AST) em ~5 segundos, com 100% de sucesso e zero alertas de lint.
+
+Os valores padrão já batem com o `docker-compose.yml`. Se a stack rodar em outra porta ou com outro token, exporte antes do `pytest`: `API_URL` (padrão `http://localhost:8001`), `INTERNAL_TOKEN` (padrão `internal-token-dev`), `DB_HOST`, `DB_PORT` (padrão `5434`), `DB_USER`, `DB_PASSWORD` e `DB_NAME` (padrões `rnv`, `rnv`, `antifraud`).
+
+Os scripts dos passos 5 e 6 usam o mesmo venv (`python scripts/farm.py` e `python scripts/load_test.py`), também com a stack no ar.
 
 ### 5. Simulador de Tráfego e Personas (Farm)
 Simula 7 personas pela própria API e valida o orçamento regulatório (0% de falsos positivos em transações legítimas):
