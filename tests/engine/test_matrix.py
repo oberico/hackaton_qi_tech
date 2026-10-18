@@ -14,6 +14,8 @@ REJECTED = Decision.REJECTED
 NIGHT_LIMIT = "HOW_NIGHT_LIMIT_EXCEEDED"
 DESTINATION_NEW_ACCOUNT = "WHERE_DESTINATION_NEW_ACCOUNT"
 UNKNOWN_PARTICIPANT = "WHERE_UNKNOWN_PARTICIPANT"
+DESTINATION_FAN_IN = "WHERE_DESTINATION_FAN_IN"
+DESTINATION_REJECTIONS = "WHERE_DESTINATION_REJECTIONS"
 FLOOR_UNREGISTERED_DEVICE = "FLOOR_UNREGISTERED_DEVICE"
 FLOOR_NIGHT_LIMIT = "FLOOR_NIGHT_LIMIT"
 
@@ -79,6 +81,30 @@ def test_first_pix_cell_with_real_rules(transaction, levels, how_codes, where_co
     assert [reason.code for reason in result.how.rules] == how_codes
     assert [reason.code for reason in result.where.rules] == where_codes
     assert (result.decision, result.decision_basis) == (decision, basis)
+
+
+CRITICAL_WHERE_CELLS = {
+    "rejections_alone": ({}, {"rejections_from_distinct_payers_24h": 2}, (OK, OK, CRITICAL), [], [DESTINATION_REJECTIONS]),
+    "fan_in_on_new_destination": (
+        {**NEW_DESTINATION}, {"distinct_payers_24h": 3}, (OK, OK, CRITICAL), [], [DESTINATION_NEW_ACCOUNT, DESTINATION_FAN_IN],
+    ),
+    "critical_where_wins_over_suspicious_how": (
+        {**NIGHT_PIX}, {"rejections_from_distinct_payers_24h": 2}, (OK, SUSPICIOUS, CRITICAL), [NIGHT_LIMIT], [DESTINATION_REJECTIONS],
+    ),
+}
+
+
+@pytest.mark.parametrize(
+    "transaction, destination, levels, how_codes, where_codes", CRITICAL_WHERE_CELLS.values(), ids=CRITICAL_WHERE_CELLS.keys()
+)
+def test_first_pix_is_rejected_by_critical_evidence_from_the_destination(transaction, destination, levels, how_codes, where_codes):
+    result = evaluate(make_context(transaction=transaction, destination=destination))
+
+    assert result.maturity_phase == 0
+    assert (result.who.level, result.how.level, result.where.level) == levels
+    assert [reason.code for reason in result.how.rules] == how_codes
+    assert [reason.code for reason in result.where.rules] == where_codes
+    assert (result.decision, result.decision_basis) == (REJECTED, DecisionBasis.CRITICAL_AXIS)
 
 
 def test_absence_of_history_is_never_evidence():
