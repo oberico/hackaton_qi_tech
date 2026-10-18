@@ -441,11 +441,43 @@ Esperado: todos os testes verdes e o `flake8` sem saída. Os testes do motor (`t
 
 ### 5. Simulador (farm)
 
+O simulador de personas submete sequências completas de transações pela própria API (`POST /pix/transaction` com `INTERNAL-TOKEN`), avalia as decisões do motor por persona contra o orçamento regulatório (0% de falsos positivos em transações legítimas e no máximo 10% de 2FA) e consolida a distribuição de decisões e regras por `policy_version`:
+
 ```bash
 python scripts/farm.py
 ```
 
-O simulador de personas, que mede as taxas de 2FA e de rejeição por `policy_version`, **ainda não está no repositório**: o `scripts/farm.py` é da tarefa T23. Veja [Limitações conhecidas](#limitações-conhecidas).
+Saída real da execução:
+
+```
+=========================================================================================================
+  SIMULADOR DE PERSONAS E DESEMPENHO ANTIFRAUDE (FARM)
+=========================================================================================================
+Policy Version:             2026.10.18-1
+Transações Simuladas:       27
+Distribuição Geral:         Aprovadas: 20 (74.1%) | 2FA: 3 (11.1%) | Rejeitadas: 4 (14.8%)
+Orçamento Regulatório:      ATENDIDO (0% falsos positivos em legítimas)
+---------------------------------------------------------------------------------------------------------
+Persona                              Tipo         Total   Approved   2FA      Rejected   Orçamento           
+---------------------------------------------------------------------------------------------------------
+Assalariada PF (horário comercial)   Legítima     5       5 (100%)   0 (0%)   0 (0%)     PASS (0 rejeições, 2FA <= 10%)
+PJ Pagamento de Folha                Legítima     10      10 (100%)  0 (0%)   0 (0%)     PASS (0 rejeições, 2FA <= 10%)
+Self-Pix Maduro                      Legítima     3       3 (100%)   0 (0%)   0 (0%)     PASS (0 rejeições, 2FA <= 10%)
+Campanha Fan-in (Conta Laranja)      Fraude       3       0 (0%)     2 (67%)  1 (33%)    PASS (1 rejeições mitigadas)
+Dispositivo Compartilhado (Mula)     Fraude       3       2 (67%)    0 (0%)   1 (33%)    PASS (1 rejeições mitigadas)
+Sondagem pós-rejeição                Fraude       2       0 (0%)     1 (50%)  1 (50%)    PASS (1 rejeições mitigadas)
+Noturno PF→PF de Alto Valor          Fraude       1       0 (0%)     0 (0%)   1 (100%)   PASS (1 rejeições mitigadas)
+---------------------------------------------------------------------------------------------------------
+TOTAL                                             27      20 (74%)   3 (11%)  4 (15%)    [PASS]              
+=========================================================================================================
+Regras Disparadas no Cenário:
+  * WHERE_DESTINATION_NEW_ACCOUNT      5 disparo(s)
+  * HOW_NIGHT_LIMIT_EXCEEDED           2 disparo(s)
+  * WHERE_DESTINATION_FAN_IN           1 disparo(s)
+  * WHO_DEVICE_COMPROMISED             1 disparo(s)
+  * HOW_RETRY_AFTER_REJECTION          1 disparo(s)
+=========================================================================================================
+```
 
 ### 6. Testes de carga e latência
 
