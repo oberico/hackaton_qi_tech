@@ -18,30 +18,30 @@ Arquivos de contrato (só o Ramon altera): `database/database.sql`, `src/engine/
 | T04 | README: esqueleto exato do modelo + "Como o motor de decisão funciona" + "Como as regras viram decisão" + cabeçalho e formato da tabela de Regras | ALTA | Ramon (Hann) | Victoria | — | 40 | 02:00 | pronto |
 | T05 | `POST /pix/transaction` com motor de mentira: resource, controller, repositories de gravação (titular, conta, Pix, análise, 3 eixos), DTO, formato do `metadata`, **e os 15 models, guiados pelos testes** | MÉDIA | Victoria | Ramon | T01, T02 | 140 | 03:45 | pronto |
 | T06 | ~~Models SQLAlchemy~~ absorvido pelo T05: os 15 models nascem dos testes do POST (sem teste próprio, não há ciclo TDD) | — | Victoria (no T05) | Ramon | — | 0 | — | cortado |
-| T07 | `GET /pix/transaction/{id}` (200 / 404 `RNV001039`) + seção `## Contrato da API` do README | MÉDIA | Victoria | Ramon | T05 | 30 | 03:30 | em revisão |
+| T07 | `GET /pix/transaction/{id}` (200 / 404 `RNV001039`) + seção `## Contrato da API` do README | MÉDIA | Victoria | Ramon | T05 | 30 | 03:30 | pronto |
 | T08 | Regras WHERE do payload: `WHERE_DESTINATION_NEW_ACCOUNT`, `WHERE_UNKNOWN_PARTICIPANT` | BAIXA | Natalia | Ramon | T03 | 40 | 03:30 | pronto |
-| T09 | Idempotência com concorrência: `IntegrityError` → rollback → hash → 200 / 422 `RNV001024`; 10x o mesmo `id` → uma análise | ALTA | Ramon (Chaz) | Victoria | T05 | 45 | 04:15 | a fazer |
-| T10 | Motor real no controller: `RiskContext` montado do payload (flow, idades, listed, IP privado), `evaluate`, gravação de `pix_analysis_rule` (todas as regras avaliadas) | ALTA | Ramon (Chaz) | Victoria | T03, T05 | 60 | 04:30 | a fazer |
+| T09 | Idempotência com concorrência: `IntegrityError` → rollback → hash → 200 / 422 `RNV001024`; 10x o mesmo `id` → uma análise | ALTA | Ramon (Chaz) | Victoria | T05 | 45 | 04:15 | pronto |
+| T10 | Motor real no controller: `RiskContext` montado do payload (flow, idades, listed, IP privado), `evaluate`, gravação de `pix_analysis_rule` (todas as regras avaliadas) | ALTA | Ramon (Chaz) | Victoria | T03, T05 | 60 | 04:30 | pronto |
 | T11 | Testes de integração dos erros de formato: 400 (`RNV000001`, `RNV000007`–`010`) e 403 `RNV000002` no POST e no GET | BAIXA | Natalia | Victoria | T05, T07 | 40 | 04:15 | pronto (coberto pelo refactor: 400 granulares e 403 por HTTP em `test_pix_transaction_create.py`) |
 | T12 | Validações de sentido: 422 `RNV001002`, `RNV001020`, `RNV001040`–`043`; 409 `RNV001044` | MÉDIA | Victoria | Ramon | T07 | 70 | 04:45 | a fazer |
-| T13 | Teste de integração: payload de exemplo do desafio → `rejected` (`two_suspicious_axes`) | BAIXA | Natalia | Victoria | T03, T05 | 20 | 04:30 | em revisão |
-| T14 | Regras WHERE de histórico: `WHERE_DESTINATION_FAN_IN` (critical, por fluxo), `WHERE_DESTINATION_REJECTIONS` (critical, fundada suspeita) | BAIXA | Natalia | Ramon | T08 | 45 | 05:15 | em revisão |
-| T15 | Consultas de janela que montam o `RiskContext` (velocity, soma noturna, soma de device novo, docs por device, fan-in, rejeições no destino, pagadores por IP) | ALTA | Ramon (Chaz) | Victoria | T06, T10 | 75 | 05:20 | a fazer |
-| T16 | Regras HOW/WHO núcleo: `HOW_VELOCITY_EXCEEDED` (por fluxo, suspicious/critical), `WHO_DEVICE_COMPROMISED` (critical) | MÉDIA | Victoria | Ramon | T03 | 50 | 05:30 | em revisão |
+| T13 | Teste de integração: payload de exemplo do desafio → `rejected` (`two_suspicious_axes`) | BAIXA | Natalia | Victoria | T03, T05 | 20 | 04:30 | pronto |
+| T14 | Regras WHERE de histórico: `WHERE_DESTINATION_FAN_IN` (critical, por fluxo), `WHERE_DESTINATION_REJECTIONS` (critical, fundada suspeita) | BAIXA | Natalia | Ramon | T08 | 45 | 05:15 | pronto |
+| T15 | Consultas de janela que montam o `RiskContext` (velocity, soma noturna, soma de device novo, docs por device, fan-in, rejeições no destino, pagadores por IP) | ALTA | Ramon (Chaz) | Victoria | T06, T10 | 75 | 05:20 | pronto |
+| T16 | Regras HOW/WHO núcleo: `HOW_VELOCITY_EXCEEDED` (por fluxo, suspicious/critical), `WHO_DEVICE_COMPROMISED` (critical) | MÉDIA | Victoria | Ramon | T03 | 50 | 05:30 | pronto |
 | T17 | README "Como rodar e testar": do clone ao 1º `curl` (com `INTERNAL-TOKEN`), payload do desafio pronto para colar, `pytest`, farm | BAIXA | Natalia | Victoria | T05, T07 | 30 | 05:45 | a fazer |
-| T18 | README: exemplo de ponta a ponta (payload do desafio → `rejected`, com o porquê) + revisão da tabela de Regras contra o `policy.py` | ALTA | Ramon (Hann) | Victoria | T13, T08 | 30 | 05:30 | a fazer |
-| T22 | **P0**: testes de integração do cold start, incluindo evidência de OUTRA entidade (device, destino): 1ª transação sem histórico nunca `rejected` sem evidência em 2 eixos | BAIXA | Natalia | Victoria | T10 | 35 | 06:20 | em revisão |
+| T18 | README: exemplo de ponta a ponta (payload do desafio → `rejected`, com o porquê) + revisão da tabela de Regras contra o `policy.py` | ALTA | Ramon (Hann) | Victoria | T13, T08 | 30 | 05:30 | pronto |
+| T22 | **P0**: testes de integração do cold start, incluindo evidência de OUTRA entidade (device, destino): 1ª transação sem histórico nunca `rejected` sem evidência em 2 eixos | BAIXA | Natalia | Victoria | T10 | 35 | 06:20 | pronto |
 | T29 | Freeze: README testado do zero numa máquina limpa, CI verde, `develop` → `main` | ALTA | Ramon (Wren + Hann) | Victoria | todos P0 | 30 | 08:00 | a fazer |
 
 ### P1 — profundidade que a banca avalia
 
 | ID | Tarefa | Cx | Dono | Revisor | Depende de | Est. | Limite | Estado |
 |---|---|---|---|---|---|---|---|---|
-| T19 | `tests/engine/test_readme_rules.py`: README × `policy.py` (rule_code e valores) | ALTA | Ramon (Chaz) | Victoria | T04, T18 | 30 | 06:15 | a fazer |
-| T20 | Memória do motor: `account_device`/`account_counterparty` (só `approved`, incremento atômico), device unknown → observing → trusted, `TRUST_RECURRENT_BENEFICIARY`, `TRUST_MATURE_SELF_PIX` | ALTA | Ramon (Chaz/Rune) | Victoria | T15 | 60 | 07:00 | a fazer |
-| T21 | Regras HOW/WHO de profundidade: `HOW_ABOVE_CUSTOMER_CEILING` (fases 0/1/2), `HOW_EARLY_MORNING_AMOUNT`, `HOW_RETRY_AFTER_REJECTION` (sondagem), `HOW_TEST_PIX`, `WHO_DEVICE_UNKNOWN` | MÉDIA | Victoria | Ramon | T16, D4 | 60 | 06:30 | a fazer |
+| T19 | `tests/engine/test_readme_rules.py`: README × `policy.py` (rule_code e valores) | ALTA | Ramon (Chaz) | Victoria | T04, T18 | 30 | 06:15 | pronto |
+| T20 | Memória do motor: `account_device`/`account_counterparty` (só `approved`, incremento atômico), device unknown → observing → trusted, `TRUST_RECURRENT_BENEFICIARY`, `TRUST_MATURE_SELF_PIX` | ALTA | Ramon (Chaz/Rune) | Victoria | T15 | 60 | 07:00 | pronto |
+| T21 | Regras HOW/WHO de profundidade: `HOW_ABOVE_CUSTOMER_CEILING` (fases 0/1/2), `HOW_EARLY_MORNING_AMOUNT`, `HOW_RETRY_AFTER_REJECTION` (sondagem), `HOW_TEST_PIX`, `WHO_DEVICE_UNKNOWN` | MÉDIA | Victoria | Ramon | T16, D4 | 60 | 06:30 | pronto |
 | T23 | Personas + `scripts/farm.py` + relatório de taxas (2FA e rejeição) por `policy_version` | MÉDIA | Victoria | Ramon | T15, T21 | 60 | 07:30 | a fazer |
-| T24 | README: `## Modelo de dados`, `## Opções descartadas`, `## Limitações conhecidas` | BAIXA | Natalia | Victoria | T17 | 30 | 06:50 | a fazer |
+| T24 | README: `## Modelo de dados`, `## Opções descartadas`, `## Limitações conhecidas` | BAIXA | Natalia | Victoria | T17 | 30 | 06:50 | pronto |
 
 ### P2 — só se sobrar tempo (corta primeiro)
 
