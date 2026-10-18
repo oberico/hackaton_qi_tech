@@ -10,3 +10,14 @@ class PixIdReusedWithDifferentPayload(QIException):
         description = "A Pix with this id was already received with a different payload; the id cannot be reused."
         translation = "Já existe um Pix recebido com este id e conteúdo diferente; o id não pode ser reutilizado."
         super().__init__(title, self.code, http_status, description, translation)
+
+
+class PixTransactionNotFound(QIException):
+    code = "RNV001039"
+
+    def __init__(self) -> None:
+        title = "Pix Transaction Not Found"
+        http_status = 404
+        description = "No Pix transaction was found with the given id."
+        translation = "Nenhum Pix foi encontrado com o id informado."
+        super().__init__(title, self.code, http_status, description, translation)

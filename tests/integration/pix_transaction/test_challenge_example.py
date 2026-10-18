@@ -1,5 +1,3 @@
-import pytest
-
 from tests.utils import PayloadGenerator, RequestGenerator
 
 EXPECTED_AXES = {"who": "ok", "how": "suspicious", "where": "suspicious"}
@@ -20,7 +18,6 @@ class TestChallengeExample:
         assert metadata["flow"] == "pf_pf"
         assert EXPECTED_REASON_CODES <= {reason["code"] for reason in metadata["reasons"]}
 
-    @pytest.mark.xfail(strict=True, reason="until T07")
     def test_challenge_example_analysis_is_returned_unchanged_by_the_get(self):
         payload = PayloadGenerator.create_challenge_example_payload()
         post_status, post_response = RequestGenerator.POST_pix_transaction(payload)

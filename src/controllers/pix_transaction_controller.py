@@ -6,7 +6,7 @@ from constants import OWN_PARTICIPANT
 from controllers.base_controller import BaseController
 from controllers.risk_context_builder import build_risk_context, person_type_of, utc_offset_minutes_of
 from dtos import PixAnalysisDto
-from errors import PixIdReusedWithDifferentPayload
+from errors import PixIdReusedWithDifferentPayload, PixTransactionNotFound
 from repositories import (
     AccountCounterpartyRepository,
     AccountDeviceRepository,
@@ -100,13 +100,19 @@ class PixTransactionController(BaseController):
         if result.decision == Decision.APPROVED:
             self._remember_approval(pix_transaction)
         self.session.commit()
-        return self._to_dto(pix_analysis.id), True
+        return self._to_dto(self.analyses.find_by_id(pix_analysis.id)), True
+
+    def get(self, transaction_id: str) -> dict:
+        pix_transaction = self.transactions.find_by_transaction_id(transaction_id)
+        if pix_transaction is None:
+            raise PixTransactionNotFound()
+        return self._to_dto(self.analyses.find_by_pix_transaction_id(pix_transaction.id))
 
     def _replay(self, payload: dict) -> dict:
         existing = self.transactions.find_by_transaction_id(payload["id"])
         if existing.payload_hash != payload_hash(payload):
             raise PixIdReusedWithDifferentPayload()
-        return self._to_dto(self.analyses.find_id_by_pix_transaction_id(existing.id))
+        return self._to_dto(self.analyses.find_by_pix_transaction_id(existing.id))
 
     def _record_analysis(self, pix_transaction_id: int, result: EngineResult, context: RiskContext, started_at: float):
         pix_analysis = self.analyses.create(
@@ -136,10 +142,10 @@ class PixTransactionController(BaseController):
             pix_transaction.transaction_date,
         )
 
-    def _to_dto(self, pix_analysis_id: int) -> dict:
-        pix_analysis, status, decision_basis = self.analyses.find_by_id(pix_analysis_id)
+    def _to_dto(self, analysis_record: tuple) -> dict:
+        pix_analysis, status, decision_basis = analysis_record
         return PixAnalysisDto.from_records(
-            pix_analysis, status, decision_basis, self.axes.levels_by_analysis(pix_analysis_id)
+            pix_analysis, status, decision_basis, self.axes.levels_by_analysis(pix_analysis.id)
         )
 
     def _upsert_account(self, ispb: str, account_data: dict):

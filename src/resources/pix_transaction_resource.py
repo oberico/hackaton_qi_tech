@@ -11,3 +11,7 @@ class PixTransactionResource:
         controller = PixTransactionController()
         body, created = controller.create(payload)
         return JSONResponse(content=body, status_code=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+
+    def on_get_transaction(self, transaction_id: str) -> JSONResponse:
+        controller = PixTransactionController()
+        return JSONResponse(content=controller.get(transaction_id), status_code=status.HTTP_200_OK)
