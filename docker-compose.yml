@@ -1,0 +1,33 @@
+services:
+  db:
+    build: ./database
+    pull_policy: build
+    environment:
+      POSTGRES_USER: ${DB_USER:-rnv}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-rnv}
+      POSTGRES_DB: ${DB_NAME:-antifraud}
+    ports:
+      - "${DB_PORT:-5434}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-rnv} -d ${DB_NAME:-antifraud}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build: .
+    pull_policy: build
+    environment:
+      DATABASE_URL: postgresql://${DB_USER:-rnv}:${DB_PASSWORD:-rnv}@db:5432/${DB_NAME:-antifraud}
+      INTERNAL_TOKEN: ${INTERNAL_TOKEN:-internal-token-dev}
+      OWN_PARTICIPANT: ${OWN_PARTICIPANT:-99999999}
+    ports:
+      - "${API_PORT:-8001}:8001"
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pgdata:

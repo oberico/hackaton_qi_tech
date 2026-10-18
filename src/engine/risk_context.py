@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 
 class PersonType(str, Enum):
@@ -117,8 +117,28 @@ class TriggeredRule:
     code: str
     axis: str
     level: RiskLevel
-    observed: str
-    threshold: str
+    observed: Dict[str, Any]
+    threshold: Dict[str, Any]
+    description: str
+    translation: str
+
+
+class RuleOutcome(str, Enum):
+    FIRED = "fired"
+    NOT_FIRED = "not_fired"
+    UNAVAILABLE = "unavailable"
+
+
+@dataclass(frozen=True)
+class EvaluatedRule:
+    code: str
+    axis: str
+    outcome: RuleOutcome
+    level: Optional[RiskLevel]
+    observed: Optional[Dict[str, Any]]
+    threshold: Optional[Dict[str, Any]]
+    description: str
+    translation: str
 
 
 @dataclass(frozen=True)
@@ -147,3 +167,4 @@ class EngineResult:
     trust_signals: List[str]
     maturity_phase: int
     policy_version: str
+    evaluated_rules: List[EvaluatedRule]

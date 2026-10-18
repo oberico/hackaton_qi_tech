@@ -12,12 +12,12 @@ Arquivos de contrato (só o Ramon altera): `database/database.sql`, `src/engine/
 
 | ID | Tarefa | Cx | Dono | Revisor | Depende de | Est. | Limite | Estado |
 |---|---|---|---|---|---|---|---|---|
-| T01 | Contrato do motor: `TriggeredRule` com `observed`/`threshold` dict + `description`/`translation`; `EngineResult` com a lista de regras avaliadas (`fired`/`not_fired`/`unavailable`) | ALTA | Ramon | Victoria | — | 20 | 01:40 | a fazer |
-| T02 | Scaffold copiado do `banco/` (Docker, compose, requirements, CI, errors, utils, middlewares, harness) | BAIXA | Natalia | Ramon | — | 50 | 02:10 | a fazer |
+| T01 | Contrato do motor: `TriggeredRule` com `observed`/`threshold` dict + `description`/`translation`; `EngineResult` com a lista de regras avaliadas (`fired`/`not_fired`/`unavailable`) | ALTA | Ramon | Victoria | — | 20 | 01:40 | em revisão |
+| T02 | Scaffold copiado do `banco/` (Docker, compose, requirements, CI, errors, utils, middlewares, harness) | BAIXA→Ramon | Ramon (Wren) | Victoria | — | 50 | 02:10 | em revisão |
 | T03 | Esqueleto do motor + molde: `policy.py`, `evaluate`, matriz, pisos, confiança, cold start, fases, regra-molde `HOW_NIGHT_LIMIT_EXCEEDED` | ALTA | Ramon (Chaz) | Victoria | T01 | 50 | 02:30 | a fazer |
-| T04 | README: esqueleto exato do modelo + "Como o motor de decisão funciona" + "Como as regras viram decisão" + cabeçalho e formato da tabela de Regras | ALTA | Ramon (Hann) | Victoria | — | 40 | 02:00 | a fazer |
-| T05 | `POST /pix/transaction` com motor de mentira: resource, controller, repositories de gravação (titular, conta, Pix, análise, 3 eixos), DTO, formato do `metadata` | MÉDIA | Victoria | Ramon | T01, T02, T06 | 105 | 03:00 | a fazer |
-| T06 | Models SQLAlchemy a partir do `database.sql` (15 tabelas: + `account_holder`, `decision_basis`, `pix_analysis_axis`; PK/FK `BigInteger` nas de volume; `analysis_key` `UUID`) | BAIXA | Natalia | Ramon | T02 | 50 | 03:00 | a fazer |
+| T04 | README: esqueleto exato do modelo + "Como o motor de decisão funciona" + "Como as regras viram decisão" + cabeçalho e formato da tabela de Regras | ALTA | Ramon (Hann) | Victoria | — | 40 | 02:00 | em revisão |
+| T05 | `POST /pix/transaction` com motor de mentira: resource, controller, repositories de gravação (titular, conta, Pix, análise, 3 eixos), DTO, formato do `metadata`, **e os 15 models, guiados pelos testes** | MÉDIA | Victoria | Ramon | T01, T02 | 140 | 03:45 | a fazer |
+| T06 | ~~Models SQLAlchemy~~ absorvido pelo T05: os 15 models nascem dos testes do POST (sem teste próprio, não há ciclo TDD) | — | Victoria (no T05) | Ramon | — | 0 | — | cortado |
 | T07 | `GET /pix/transaction/{id}` (200 / 404 `RNV001039`) + seção `## Contrato da API` do README | MÉDIA | Victoria | Ramon | T05 | 30 | 03:30 | a fazer |
 | T08 | Regras WHERE do payload: `WHERE_DESTINATION_NEW_ACCOUNT`, `WHERE_UNKNOWN_PARTICIPANT` | BAIXA | Natalia | Ramon | T03 | 40 | 03:30 | a fazer |
 | T09 | Idempotência com concorrência: `IntegrityError` → rollback → hash → 200 / 422 `RNV001024`; 10x o mesmo `id` → uma análise | ALTA | Ramon (Chaz) | Victoria | T05 | 45 | 04:15 | a fazer |
@@ -57,8 +57,8 @@ Arquivos de contrato (só o Ramon altera): `database/database.sql`, `src/engine/
 | Hora | Ramon (integra + ALTA com agentes) | Victoria (MÉDIA) | Natalia (BAIXA) |
 |---|---|---|---|
 | 01:15 | T01 contrato → T03 motor (Chaz) · T04 README (Hann) em paralelo | T05: testes de integração do POST (red), DTO, resource, controller com motor de mentira | T02 scaffold |
-| 02:10 | revisa T02 e T04 assim que chegarem | T05 continua | T06 models |
-| **02:30–03:15** | **Bloco de revisão R1:** T03, T06, T05 | abre PR do T05 até 03:00 → T07 GET | T08 WHERE do payload |
+| 02:10 | revisa T02 e T04 assim que chegarem | T05 continua | T13 (red, xfail strict) |
+| **02:30–03:15** | **Bloco de revisão R1:** T01, T02, T04, T03, T05 | abre PR do T05 até 03:00 → T07 GET | T08 WHERE do payload |
 | 03:15 | T09 idempotência (Chaz) e T10 motor real (Chaz, 2ª worktree) | T07 → T12 validações | T08 → T11 testes 400/403 |
 | **04:15–05:00** | **Bloco R2:** T07, T08, T11, T09, T10 · T15 janelas (Chaz) roda em paralelo | T12 → T16 HOW/WHO núcleo | T13 desafio → `rejected` → T14 WHERE histórico |
 | 05:00 | T18 README ponta a ponta (Hann) | T16 | T14 → T17 Como rodar |
@@ -72,7 +72,7 @@ Arquivos de contrato (só o Ramon altera): `database/database.sql`, `src/engine/
 
 | Hora | O que precisa estar verde | Se escorregar, corta (nesta ordem) |
 |---|---|---|
-| **03:00** | API de pé (T02, T06); POST com motor de mentira (T05 em revisão ou mergeado); molde do motor com testes verdes (T03); README com esqueleto (T04) | GET (T07) passa para 03:30; T11 depois do T12; nada de P1/P2 é tocado |
+| **03:00** | API de pé (T02); POST com motor de mentira (T05 em revisão ou mergeado); molde do motor com testes verdes (T03); README com esqueleto (T04) | GET (T07) passa para 03:30; T11 depois do T12; nada de P1/P2 é tocado |
 | **05:30** | motor real integrado (T10); payload do desafio → `rejected` (T13 verde); idempotência (T09); validações (T12); regras-núcleo WHERE/HOW/WHO (T08, T14, T16); README com Regras preenchidas (T18) e "Como rodar" (T17) | P2 inteiro (T25–T28) → T24 → T21 só com `HOW_ABOVE_CUSTOMER_CEILING` → T23 farm sem relatório |
 | **08:00** | P0 completo, P1 que deu, README testado numa máquina limpa, `develop` → `main` | o P1 que não estiver mergeado às 07:30 fica de fora e vai para "Limitações conhecidas" |
 
@@ -119,6 +119,13 @@ Ordem: **T02 → T06 → T08 → T11 → T13 → T14 → T17** (P0) → T22 → 
 Primeiro passo (01:15): branch `feat/T02-scaffold`, copiar a infraestrutura do `banco/` do `oberico/desafio_qitech`.
 Depende de: Ramon (T03 molde para T08/T14), Victoria (T05/T07 para T11, T13, T17).
 Dependem dela: todos (T02 e T06 destravam a API).
+
+## Regra de TDD (vale para toda tarefa de código)
+- Cada ciclo (um comportamento observável, ponta a ponta pela interface pública) tem 3 commits: `test(ID): red`, `feat(ID): green`, `refactor(ID)`. A descrição do PR traz a seção "Ciclos TDD" com a saída real do red e do green. Sem ela o PR volta. O protocolo completo está em cada `docs/tarefas/<ID>.md`.
+- Teste que passa de primeira (caracterização: T11, T22) só vale depois de quebrar o código de propósito, ver falhar e desfazer.
+- T13 é teste de aceitação: nasce vermelho e entra com `xfail(strict=True)`; o T10 remove o marcador.
+- Tarefas sem ciclo de teste, por natureza: T17 e T24 (documentação) e a infra do T02. Validação delas é rodar do zero.
+- Fila da Natalia mudou: T13 primeiro (não depende de nada e já dá para escrever o red), depois T08 (quando o T03 entrar), T11, T14, T17. O T06 saiu do nome dela.
 
 ## Mudanças de 02:30 (revisão do tech lead + índices)
 - Schema: `account_holder` (titular separado da conta), `pix_analysis_axis` (1 linha por eixo), `decision_basis` como lookup, `BIGSERIAL`/`BIGINT` nas tabelas de volume, constraints nomeadas.

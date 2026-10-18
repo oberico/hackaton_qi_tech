@@ -1,0 +1,86 @@
+name: CI
+
+on:
+  push:
+    branches: [develop, main]
+  pull_request:
+    branches: [develop, main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11.16"
+
+      - name: Install test dependencies
+        id: install
+        run: pip install -r requirements-dev.txt
+
+      - name: Lint
+        id: lint
+        run: flake8
+
+      - name: Build and start containers
+        id: build
+        run: docker compose up -d --build
+
+      - name: Wait for the API to be healthy
+        id: health
+        run: |
+          for attempt in $(seq 1 30); do
+            if curl -fsS http://localhost:8001/health_check > /dev/null; then
+              echo "healthy"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "not healthy after 60s"
+          exit 1
+
+      - name: Run pytest
+        id: pytest
+        run: |
+          mkdir -p reports
+          timeout 300 python -m pytest tests/ --junitxml=reports/pytest.xml
+
+      - name: Show container logs on failure
+        if: failure()
+        run: docker compose logs --no-color --tail=200
+
+      - name: Stop containers
+        if: always()
+        run: docker compose down -v
+
+      - name: Notify Discord
+        if: always()
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          JOB_STATUS: ${{ job.status }}
+          STEPS_JSON: ${{ toJSON(steps) }}
+          SERVICE_TITLE: "Antifraud CI"
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          COMMIT_URL: ${{ github.server_url }}/${{ github.repository }}/commit/${{ github.event.pull_request.head.sha || github.sha }}
+          COMMIT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          COMMIT_MESSAGE: ${{ github.event.pull_request.title || github.event.head_commit.message }}
+          BRANCH: ${{ github.head_ref || github.ref_name }}
+          ACTOR: ${{ github.actor }}
+        run: |
+          if [ -z "$DISCORD_WEBHOOK_URL" ]; then
+            echo "DISCORD_WEBHOOK_URL not set; skipping notification"
+            exit 0
+          fi
+          python3 .github/scripts/discord_report.py > payload.json
+          curl -sS -H "Content-Type: application/json" -d @payload.json "$DISCORD_WEBHOOK_URL" > /dev/null \
+            || echo "Discord notification failed (ignored)"
