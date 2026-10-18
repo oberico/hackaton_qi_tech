@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Motor antifraude de Pix do RNV — final (hackathon) do Bootcamp QI Tech 2026, área Risk Solutions. API que recebe um Pix (`POST /pix/transaction`), decide `approved`, `two_factor_required` ou `rejected` com motivo explicável em `metadata`, grava tudo e devolve a análise em `GET /pix/transaction/{id}`. Serviço único, chamado por outros serviços (como o Transferências do RNV), nunca pelo cliente final. Entrega: domingo 18/10 até 12:00 (code freeze 08:00).
+Motor antifraude de Pix do RNV — final (hackathon) do Bootcamp QI Tech 2026, área Risk Solutions. API que recebe um Pix (`POST /pix/transaction`), decide `approved`, `two_factor_required` ou `rejected` com motivo explicável em `metadata`, grava tudo e devolve a análise em `GET /pix/transaction/{id}`. Serviço único, chamado por outros serviços (como o Transferências do RNV), nunca pelo cliente final. Entrega: domingo 18/10 até 12:00 (code freeze 09:00).
 
 O payload de exemplo do desafio está em `tests/fixtures/challenge_example_payload.json` (resultado esperado: `rejected`). Antes de codar, leia a seção "Entrega" abaixo, `docs/modelo-de-dados.md` (o porquê de cada tabela e o que foi descartado), `docs/catalogo-de-erros.md` (os códigos) e `src/engine/risk_context.py` (o contrato do motor). Em conflito, este arquivo vence e você me avisa. Em caso de dúvida, me pergunte. Não faça suposições sobre regra de negócio.
 
@@ -50,7 +50,7 @@ Regras para quem desenvolve uma tarefa:
 
 Regras para o Ramon (integrador):
 - Revisa em janelas curtas (~45 min), na ordem do `TASKS.md` (P0 antes). Confere: critério de pronto da tarefa, a seção Ciclos TDD e a ordem red → green → refactor nos commits, convenções deste arquivo, testes verdes, README atualizado, nenhum arquivo de contrato alterado sem combinar.
-- Merge em `develop` com squash. `main` só recebe `develop` no code freeze (08:00).
+- Merge em `develop` com squash. `main` só recebe `develop` no code freeze (09:00).
 - PR só de README ou de teste puro pode ser revisado pela outra colega; o Ramon é avisado e faz o merge.
 
 ## Tese
@@ -74,7 +74,7 @@ Não perguntamos "quão arriscado é". Perguntamos **qual é a dúvida**:
 - **Dinheiro em centavos inteiros** (`*_minor`, `BIGINT`). O contrato externo chama `amount`; a coluna é `amount_minor`. Nunca float, nunca `round()`.
 - **CPF/CNPJ mascarados** (pattern com pontuação; CNPJ aceita o formato alfanumérico). Coluna `VARCHAR(18)`.
 - **Append-only:** transação e análise nunca mudam. Memória do motor (`account_device`, `account_counterparty`) é mutável e reconstruível a partir do registro.
-- **Idempotência — na própria entidade:** `pix_transaction` carrega `transaction_id` (`UNIQUE` nomeado `uq_pix_transaction_transaction_id`) + `payload_hash` (`utils/payload_hash.py`, SHA-256 do JSON canônico). O insert do Pix é a primeira escrita; se o `UNIQUE` estourar: `rollback`, busca pela chave e compara o hash — igual, devolve a análise via DTO com `200`; diferente, `422 RNV001024`. **Sem `response_body` gravado**: a resposta é reconstruída do DTO (a análise é imutável, então é idêntica). Erros não são cacheados.
+- **Idempotência — na própria entidade:** `pix_transaction` carrega `transaction_id` (`UNIQUE` nomeado `uq_pix_transaction_transaction_id`) + `payload_hash` (`utils/payload_hash.py`, SHA-256 do JSON canônico). O insert do Pix é a escrita que decide a idempotência (as contas e os titulares antes dele são `ON CONFLICT DO NOTHING`); se o `UNIQUE` estourar: `rollback`, busca pela chave e compara o hash — igual, devolve a análise via DTO com `200`; diferente, `422 RNV001024`. **Sem `response_body` gravado**: a resposta é reconstruída do DTO (a análise é imutável, então é idêntica). Erros não são cacheados.
 - **Concorrência:** conta via `INSERT ... ON CONFLICT DO NOTHING` + `SELECT`; incremento de memória atômico no SQL (`SET approved_count = approved_count + 1`). Sem lock de linha no caminho do motor (só leitura de histórico).
 - **Consultas no caminho síncrono:** sempre igualdade numa entidade indexada + intervalo de `transaction_date` limitado (≤ 90 dias), só histórico anterior ao Pix analisado (nunca `now()`). Sem varredura, sem `GROUP BY` sem filtro. `latency_ms` gravada em cada análise (alvo < 100 ms).
 - **Parâmetros de política** vivem em `src/engine/policy.py`, indexados por fluxo (`pf_pf`, `pf_pj`, `pj_pf`, `pj_pj`). Nenhum número mágico nas regras. Mudou parâmetro → sobe `POLICY_VERSION`.
@@ -111,8 +111,8 @@ Não perguntamos "quão arriscado é". Perguntamos **qual é a dúvida**:
 ## Fluxo do POST
 1. Schema → 400
 2. Validação de sentido no controller: dígito verificador CPF/CNPJ (422 `RNV001002`/`RNV001020`), `opening_date` ≤ `transaction_date`, `transaction_date` ≤ agora + 5 min, origem ≠ destino, IP que não parseia com `ipaddress` (422, `RNV001040`–`RNV001043`), conta conhecida com outro titular/abertura (409 `RNV001044`)
-3. Insert do Pix (idempotência, ver Convenções)
-4. Upsert de titulares e contas (`account_holder` por documento, `account` por banco + agência + número; origem usa `OWN_PARTICIPANT`); ISPB fora da lista não é erro: cria o participante com `listed = false` e vira o sinal `WHERE_UNKNOWN_PARTICIPANT`
+3. Upsert de titulares e contas (`account_holder` por documento, `account` por banco + agência + número; origem usa `OWN_PARTICIPANT`); vem antes do Pix porque `pix_transaction` tem FK para `account`. ISPB fora da lista não é erro: cria o participante com `listed = false` e vira o sinal `WHERE_UNKNOWN_PARTICIPANT`
+4. Insert do Pix (idempotência, ver Convenções): o `UNIQUE` de `transaction_id` é a barreira; o upsert das contas é idempotente por `ON CONFLICT DO NOTHING`, então o retry não duplica nada
 5. Repositories montam o `RiskContext`
 6. `engine.evaluate(context)` → `EngineResult`
 7. Grava `pix_analysis`, `pix_analysis_axis` (3 linhas), `pix_analysis_rule` (todas as regras avaliadas: `fired`/`not_fired`/`unavailable`) e a memória (só se `approved`) → `commit`
