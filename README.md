@@ -14,7 +14,51 @@ Em vez de um score de probabilidade opaco, a política decompõe o risco em trê
 | **HOW** (valor, horário, velocity) | *O comportamento é habitual do pagador?* | **Sim** | Desvio de hábito: solicitar confirmação forte (2FA) |
 | **WHERE** (conta e instituição de destino) | *O dinheiro vai para conta-laranja ou mula?* | **NÃO** | Em golpe ou coação, a vítima aprova o 2FA. Requer **bloqueio imediato (`rejected`)** |
 
+### Caminho de uma requisição
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant C as Serviço chamador (RNV)
+    participant R as Resource
+    participant K as Controller
+    participant P as Repository
+    participant E as Motor (função pura)
+    participant D as PostgreSQL
+
+    C->>R: POST /pix/transaction + INTERNAL-TOKEN
+    R->>R: 403 sem token / 400 se o JSON Schema falhar
+    R->>K: payload válido
+    K->>K: 422/409 (CPF/CNPJ, datas, IP, origem ≠ destino, conta com outro titular)
+    K->>P: upsert de titulares e contas (ON CONFLICT DO NOTHING)
+    K->>P: insert do Pix (UNIQUE transaction_id)
+    P->>D: INSERT pix_transaction
+    alt transaction_id já existe
+        K-->>R: payload_hash igual → 200 com a mesma análise / diferente → 422 RNV001024
+    else Pix novo
+        K->>P: busca histórico (somente consultas indexadas, janela ≤ 90 dias)
+        P->>D: Index Only Scan
+        K->>E: evaluate(RiskContext)
+        E-->>K: EngineResult (decisão, eixos, reasons, pisos, confiança)
+        K->>P: grava análise, 3 eixos, regras avaliadas e memória (se approved)
+        K->>D: COMMIT
+        K-->>R: DTO da análise
+        R-->>C: 201 {key, status, metadata}
+    end
+```
+
 ### Arquitetura de Alto Desempenho
+
+```mermaid
+flowchart LR
+    Resource["Resource<br/>HTTP + JSON Schema"] --> Controller["Controller<br/>regra, contexto, commit"]
+    Controller --> Repository["Repository<br/>queries"]
+    Repository --> Model["Model<br/>SQLAlchemy"]
+    Model --> DB[("PostgreSQL")]
+    Controller -. "evaluate(RiskContext)" .-> Engine["Engine<br/>função pura, sem I/O"]
+    Controller --> DTO["DTO<br/>resposta"]
+```
+
 - **Camadas Estritas:** `Resource` (validação de formato JSON Schema na porta HTTP) → `Controller` (validação semântica de CPF/CNPJ, datas e regras negociais) → `Repository` (consultas otimizadas cobrindo índices de janela de 90 dias) → `Model`. A integridade das camadas é garantida por testes de AST (`tests/architecture/`).
 - **Motor Puro:** A função `evaluate(RiskContext) -> EngineResult` em `src/engine/` é puramente matemática (zero I/O, determinística, sem acesso a banco ou relógio), permitindo testes instantâneos e versionamento por `POLICY_VERSION`.
 - **Idempotência Atômica:** Chave natural única `transaction_id` com SHA-256 do payload canônico. Retentativas idênticas devolvem `200` com a mesma análise reconstruída via DTO; payloads conflitantes com o mesmo ID retornam `422 RNV001024`.
@@ -47,6 +91,30 @@ A tabela a seguir consolida todas as 17 regras implementadas no código, com os 
 
 Cada regra avaliada pontua um dos três eixos (`who`, `how`, `where`) com `ok`, `suspicious` ou `critical`. O nível consolidado do eixo é o mais severo entre suas regras.
 
+### Do Pix à decisão
+
+```mermaid
+flowchart TD
+    Pix["Pix + histórico (RiskContext)"] --> Who["Eixo WHO<br/>device, IP, canal"]
+    Pix --> How["Eixo HOW<br/>valor, horário, velocity"]
+    Pix --> Where["Eixo WHERE<br/>destino"]
+    Who --> Levels["Nível por eixo: o mais severo entre as regras<br/>ok · suspicious · critical"]
+    How --> Levels
+    Where --> Levels
+    Levels --> Trust{"Sinal de confiança?<br/>destinatário recorrente ou self-Pix maduro"}
+    Trust -- "sim" --> Down["Rebaixa UM eixo suspicious para ok<br/>ordem who, how, where<br/>nunca um critical"]
+    Trust -- "não" --> Matrix
+    Down --> Matrix{"Matriz"}
+    Matrix -- "algum eixo critical" --> Rej1["rejected<br/>critical_axis"]
+    Matrix -- "2+ eixos suspicious" --> Rej2["rejected<br/>two_suspicious_axes"]
+    Matrix -- "1 eixo suspicious" --> TwoFA["two_factor_required<br/>single_suspicious_axis"]
+    Matrix -- "tudo ok" --> Floor{"Piso regulatório disparou?<br/>device sem histórico acima de R$ 200 ou R$ 1.000 no dia<br/>PF→PF noturno acima de R$ 1.000"}
+    Floor -- "sim" --> TwoFAFloor["two_factor_required<br/>regulatory_floor"]
+    Floor -- "não" --> Ok["approved<br/>clean"]
+```
+
+O piso só eleva um `approved` para `two_factor_required`; nunca rejeita e nunca é removido pela confiança. Quando o rebaixamento por confiança muda a decisão, o `decision_basis` é `trust_downgrade`.
+
 ### A Matriz de Decisão
 | Situação dos Eixos | Decisão | Base (`decision_basis`) | Racional |
 |---|---|---|---|
@@ -56,7 +124,7 @@ Cada regra avaliada pontua um dos três eixos (`who`, `how`, `where`) com `ok`, 
 | Todos os eixos `ok` | **`approved`** | `clean` | Transação alinhada ao perfil, sem anomalias detectadas |
 
 ### Pisos Regulatórios e Sinais de Confiança
-- **Pisos Garantidos (`floors`):** Dispositivo sem histórico com valor > R$ 200 (`FLOOR_UNREGISTERED_DEVICE`) ou Pix noturno PF→PF > R$ 1.000 (`FLOOR_NIGHT_LIMIT` — Res. BCB nº 142/2021) impõem no mínimo `two_factor_required` (`regulatory_floor`), mesmo se os eixos estiverem `ok`. O piso nunca rejeita sozinho.
+- **Pisos Garantidos (`floors`):** Dispositivo sem histórico com valor > R$ 200 (`FLOOR_UNREGISTERED_DEVICE`) ou Pix noturno PF→PF > R$ 1.000 (`FLOOR_NIGHT_LIMIT`) impõem no mínimo `two_factor_required` (`regulatory_floor`), mesmo se os eixos estiverem `ok`. O piso nunca rejeita sozinho.
 - **Sinais de Confiança (`trust`):** Destinatário recorrente (`TRUST_RECURRENT_BENEFICIARY`) ou self-Pix maduro (`TRUST_MATURE_SELF_PIX`) rebaixa **um** eixo `suspicious` para `ok` (na ordem de resolução: who → how → where). Sinais de confiança **nunca** rebaixam eixos críticos nem removem pisos regulatórios.
 - **Cold Start Seguro:** Ausência de histórico **nunca** é evidência de fraude. A primeira transação de um cliente comum sem anomalias é aprovada (`clean`); ela só é rejeitada se o próprio payload contiver evidências em 2 eixos distintos ou se a evidência vier de entidade externa já comprometida (device com múltiplos CPFs ou conta recebedora sob fundada suspeita — Res. BCB nº 501/2025).
 
@@ -168,6 +236,73 @@ O banco de dados PostgreSQL roda via script inicial `database/database.sql` estr
 - **Lookups:** Tabelas enumeradas (`analysis_status`, `decision_basis`, `risk_level`, `rule_axis`, `rule_outcome`, `pix_participant` com 469 ISPBs do STR).
 - **Registro Imutável:** `account_holder` (titular único por CPF/CNPJ), `account` (agência e conta vinculadas ao titular), `pix_transaction` (o Pix recebido), `pix_analysis` (a decisão 1:1 com chave pública UUID v4), `pix_analysis_axis` (3 linhas por análise) e `pix_analysis_rule` (todas as regras avaliadas com valores observados e limiares).
 - **Memória de Aprendizado:** `account_device` e `account_counterparty` (contadores atômicos de aprovações prévias, alimentados exclusivamente por transações `approved`).
+
+```mermaid
+erDiagram
+    person_type ||--o{ account_holder : classifica
+    pix_participant ||--o{ account : "banco da conta"
+    account_holder ||--o{ account : "titular de"
+    account ||--o{ pix_transaction : "origem"
+    account ||--o{ pix_transaction : "destino"
+    pix_transaction ||--|| pix_analysis : "decisão 1:1"
+    analysis_status ||--o{ pix_analysis : status
+    decision_basis ||--o{ pix_analysis : base
+    pix_analysis ||--|{ pix_analysis_axis : "3 linhas: who, how, where"
+    pix_analysis ||--|{ pix_analysis_rule : "regras avaliadas"
+    rule_axis ||--o{ pix_analysis_axis : eixo
+    risk_level ||--o{ pix_analysis_axis : nivel
+    rule_axis ||--o{ pix_analysis_rule : eixo
+    rule_outcome ||--o{ pix_analysis_rule : "fired, not_fired, unavailable"
+    account ||--o{ account_device : "memória: só approved"
+    account ||--o{ account_counterparty : "memória: só approved"
+
+    account_holder {
+        bigint id PK
+        varchar document_number UK
+    }
+    account {
+        bigint id PK
+        varchar branch
+        varchar account_number
+        timestamptz opening_date
+    }
+    pix_transaction {
+        bigint id PK
+        varchar transaction_id UK
+        char payload_hash
+        bigint amount_minor
+        timestamptz transaction_date
+        smallint utc_offset_minutes
+        varchar device_id
+        inet ip_address
+    }
+    pix_analysis {
+        bigint id PK
+        uuid analysis_key UK
+        varchar policy_version
+        int latency_ms
+    }
+    pix_analysis_axis {
+        bigint id PK
+    }
+    pix_analysis_rule {
+        bigint id PK
+        varchar rule_code
+        jsonb observed
+        jsonb threshold
+    }
+    account_device {
+        bigint id PK
+        varchar device_id
+        int approved_count
+        timestamptz first_approved_at
+    }
+    account_counterparty {
+        bigint id PK
+        int approved_count
+        timestamptz first_approved_at
+    }
+```
 
 **Performance:** Todas as buscas síncronas de histórico utilizam índices de cobertura (*covering indexes* com cláusula `INCLUDE`), garantindo **Index Only Scan (< 0.1 ms)** sem leitura de páginas físicas de heap.
 
