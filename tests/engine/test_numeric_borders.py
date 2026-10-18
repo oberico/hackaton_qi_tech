@@ -123,7 +123,20 @@ REJECTED_BY_CRITICAL_AXIS = (Decision.REJECTED, DecisionBasis.CRITICAL_AXIS)
 FAN_IN_BORDERS = {
     "pf_pf_two_payers": (Flow.PF_PF, 7, 2, False, 3),
     "pf_pf_three_payers": (Flow.PF_PF, 7, 3, True, 3),
+    "pf_pj_nine_payers": (Flow.PF_PJ, 7, 9, False, 10),
+    "pf_pj_ten_payers": (Flow.PF_PJ, 7, 10, True, 10),
+    "pj_pf_two_payers": (Flow.PJ_PF, 7, 2, False, 3),
+    "pj_pf_three_payers": (Flow.PJ_PF, 7, 3, True, 3),
+    "pj_pj_nine_payers": (Flow.PJ_PJ, 7, 9, False, 10),
+    "pj_pj_ten_payers": (Flow.PJ_PJ, 7, 10, True, 10),
+    "destination_twenty_nine_days_old": (Flow.PF_PF, 29, 3, True, 3),
+    "destination_exactly_thirty_days_old": (Flow.PF_PF, 30, 3, False, 3),
+    "mature_destination_with_many_payers": (Flow.PF_PF, 400, 50, False, 3),
 }
+
+
+def expected_without_fan_in(destination_age_days):
+    return TWO_FACTOR_BY_AXIS if destination_age_days < 30 else APPROVED
 
 
 @pytest.mark.parametrize("flow, destination_age_days, payers, fires, threshold_payers", FAN_IN_BORDERS.values(), ids=FAN_IN_BORDERS.keys())
@@ -146,7 +159,7 @@ def test_destination_fan_in_border(flow, destination_age_days, payers, fires, th
     assert [reason.code for reason in result.where.rules if reason.code == "WHERE_DESTINATION_FAN_IN"] == (
         ["WHERE_DESTINATION_FAN_IN"] if fires else []
     )
-    assert (result.decision, result.decision_basis) == (REJECTED_BY_CRITICAL_AXIS if fires else TWO_FACTOR_BY_AXIS)
+    assert (result.decision, result.decision_basis) == (REJECTED_BY_CRITICAL_AXIS if fires else expected_without_fan_in(destination_age_days))
 
 
 MATURITY_BORDERS = {
