@@ -82,7 +82,7 @@ class PixTransactionController(BaseController):
 
     def create(self, payload: dict) -> Tuple[dict, bool]:
         started_at = time.perf_counter()
-        validate_payload_semantics(payload)
+        validate_payload_semantics(payload, self.accounts)
         source_account, _ = self._upsert_account(OWN_PARTICIPANT, payload["source_account"])
         destination_account, destination_participant = self._upsert_account(
             payload["destination_account"]["participant"], payload["destination_account"]

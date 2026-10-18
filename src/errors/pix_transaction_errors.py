@@ -87,3 +87,14 @@ class InvalidIpAddress(QIException):
         description = "The source IP address is not a valid IPv4 or IPv6 address."
         translation = "O endereço IP de origem não é um endereço IPv4 ou IPv6 válido."
         super().__init__(title, self.code, http_status, description, translation)
+
+
+class AccountConflict(QIException):
+    code = "RNV001044"
+
+    def __init__(self) -> None:
+        title = "Account Conflict"
+        http_status = 409
+        description = "The account is already known with a different holder or different opening date."
+        translation = "A conta já é conhecida com outro titular ou outra data de abertura."
+        super().__init__(title, self.code, http_status, description, translation)

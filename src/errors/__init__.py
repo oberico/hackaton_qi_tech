@@ -11,6 +11,7 @@ from errors.custom_errors import (
     ValueOutOfRange,
 )
 from errors.pix_transaction_errors import (
+    AccountConflict,
     AccountOpenedAfterTransaction,
     InvalidCnpj,
     InvalidCpf,
@@ -23,6 +24,7 @@ from errors.pix_transaction_errors import (
 
 __all__ = [
     "QIException",
+    "AccountConflict",
     "AccountOpenedAfterTransaction",
     "FieldNotAllowed",
     "ForbiddenNotInternal",

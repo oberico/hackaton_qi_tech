@@ -3,6 +3,7 @@ from datetime import datetime, timedelta, timezone
 
 from constants import OWN_PARTICIPANT
 from errors import (
+    AccountConflict,
     AccountOpenedAfterTransaction,
     InvalidCnpj,
     InvalidCpf,
@@ -57,9 +58,30 @@ def validate_ip_address(payload: dict) -> None:
         raise InvalidIpAddress()
 
 
-def validate_payload_semantics(payload: dict) -> None:
+def validate_account_conflicts(payload: dict, account_repository) -> None:
+    if account_repository is None:
+        return
+    for ispb, account_data in (
+        (OWN_PARTICIPANT, payload["source_account"]),
+        (payload["destination_account"]["participant"], payload["destination_account"]),
+    ):
+        match = account_repository.find_with_holder(
+            ispb=ispb,
+            branch=account_data["branch"],
+            account_number=account_data["account_number"],
+        )
+        if match is not None:
+            account, holder = match
+            if holder.document_number != account_data["owner"]["document_number"]:
+                raise AccountConflict()
+            if account.opening_date != datetime.fromisoformat(account_data["opening_date"]):
+                raise AccountConflict()
+
+
+def validate_payload_semantics(payload: dict, account_repository=None) -> None:
     validate_document_numbers(payload)
     validate_opening_dates(payload)
     validate_transaction_date_not_in_future(payload)
     validate_different_accounts(payload)
     validate_ip_address(payload)
+    validate_account_conflicts(payload, account_repository)
