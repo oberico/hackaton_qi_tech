@@ -134,3 +134,17 @@ class TestPostSemanticErrors:
         get_status, get_response = RequestGenerator.GET_pix_transaction(payload["id"])
         assert get_status == 404
         assert get_response["code"] == "RNV001039"
+
+    def test_invalid_ip_returns_422_rnv001043(self):
+        payload = PayloadGenerator.create_challenge_example_payload()
+        payload["source"]["ip"] = "999.999.999.999"
+
+        status, response = RequestGenerator.POST_pix_transaction(payload)
+
+        assert status == 422
+        assert set(response.keys()) == ERROR_FIELDS
+        assert response["code"] == "RNV001043"
+
+        get_status, get_response = RequestGenerator.GET_pix_transaction(payload["id"])
+        assert get_status == 404
+        assert get_response["code"] == "RNV001039"
