@@ -146,7 +146,7 @@ Não perguntamos "quão arriscado é". Perguntamos **qual é a dúvida**:
 
 **Cold start:** ausência de histórico nunca é evidência. Device novo só é suspeito se o pagador já tem outros devices. 1ª transação só é rejeitada por evidência do payload em 2 eixos ou por histórico de OUTRA entidade (device, destino, IP).
 
-**Fases do pagador:** 0 (0 aprovadas) · 1 (1–4) · 2 (5+ aprovadas e 30+ dias) — teto = (n·teto_hist + 5·teto_ref)/(n+5).
+**Fases do pagador:** 0 (0 aprovadas) · 1 (1–4) · 2 (5+ aprovadas e 30+ dias) — teto = (n·teto_hist + 5·teto_ref)/(n+5), com teto_hist = 1,5 × p95 das aprovadas em 90 dias (ver "Parâmetros decididos").
 
 **Device:** unknown → observing → trusted (1+ aprovada e 1ª vez há > 24h) · comprometido = 3+ documentos (critical).
 
@@ -157,6 +157,20 @@ Não perguntamos "quão arriscado é". Perguntamos **qual é a dúvida**:
 | where | destino < 30 dias · ISPB fora da lista do STR (`WHERE_UNKNOWN_PARTICIPANT`) · destino < 30d com 3+ pagadores/24h (critical) · destino com 2+ rejeições de pagadores distintos/24h (critical, "fundada suspeita" Res. BCB 501/2025) |
 
 **Falha do connector externo:** decide sem ele, registra em `metadata` (`ip_country: "unavailable"`).
+
+## Parâmetros decididos (fechados às 02:55 — não reabrir sem o Ramon)
+
+Todos os horários são **locais do pagador** (`transaction_date` + `utc_offset_minutes`). Todas as somas **incluem o valor do Pix em análise**.
+
+| Parâmetro | Decisão | Constante em `policy.py` | Por quê |
+|---|---|---|---|
+| Self-Pix maduro (T2) | mesmo `account_holder` nas duas pontas **e** conta destino aberta há ≥ 30 dias **e** device `trusted`. Não exige histórico entre as duas contas | `MATURE_SELF_PIX_MIN_DESTINATION_AGE_DAYS = 30` | O risco do self-Pix é a conta fantasma recém-aberta no nome da vítima; 30 dias é o mesmo corte de "destino jovem" (D1), então as duas regras não se contradizem. Exigir histórico entre as contas puniria o primeiro Pix legítimo para a própria conta antiga. |
+| Teto de referência (cold start) | PF com conta < 90 dias: R$ 1.000 · PF ≥ 90 dias: R$ 3.000 · PJ: R$ 20.000 | `REFERENCE_CEILING_MINOR` por fluxo/idade | R$ 1.000 é o mesmo patamar dos limites padrão do BCB (noturno e device novo), então conta nova começa onde a regulação começa. Os demais são escolha de design, conferidos no simulador. |
+| Teto histórico | `1,5 × p95` dos Pix **aprovados** do pagador nos últimos 90 dias (`percentile_cont(0.95)`), misturado com o de referência: `(n·teto_hist + 5·teto_ref)/(n+5)` | `HISTORY_WINDOW_DAYS = 90`, `HISTORY_PERCENTILE = 0.95`, `HISTORY_MARGIN = 1.5`, `SHRINKAGE_K = 5` | Valores de Pix são assimétricos (muitos pequenos, poucos grandes): média + 3σ distorce; máximo é refém de um único pagamento atípico. p95 ignora os 5% de cauda; a margem de 1,5 evita pedir 2FA para ~5% dos Pix legítimos. Uma consulta indexada (`idx_pix_transaction_source_date`). |
+| Madrugada | 00:00–05:59 | `EARLY_MORNING_START_HOUR = 0`, `EARLY_MORNING_END_HOUR = 6` | Subconjunto do período noturno regulatório (20h–6h): é a faixa de sequestro relâmpago e celular roubado desbloqueado; 20h–0h é vida normal (jantar, dividir conta). |
+| Velocity PJ | 20+ Pix em 10 min = suspicious · 40+ = critical | `VELOCITY_10MIN` por fluxo | Mesma proporção do PF (3 → 6, o dobro): folha de pagamento justifica volume alto, mas o dobro do normal já é rajada. |
+| "Dia" do device novo | dia-calendário local (00:00–23:59) | `UNKNOWN_DEVICE_DAILY_LIMIT_MINOR = 100000` | A regra do BCB é "por dia", não "24h corridas"; dia-calendário é o que o cliente entende e o que a regulação descreve. |
+| Soma noturna | o **período noturno** que contém o Pix: das 20:00 até as 05:59 seguintes (Pix às 02h soma desde as 20h do dia anterior). PF→PF, titulares diferentes, status approved + two_factor_required | `NIGHT_START_HOUR = 20`, `NIGHT_END_HOUR = 6`, `NIGHT_LIMIT_MINOR = 100000` | O limite regulatório é por período noturno, não 24h corridas. Self-Pix fica fora porque o limite trata de pagamento entre pessoas. |
 
 ## Princípios da política
 1. **Regras por fluxo** (`flow` = `pf_pf`, `pf_pj`, `pj_pf`, `pj_pj`, derivado do formato do documento; não é gravado). Os parâmetros em `policy.py` são indexados por fluxo:
