@@ -7,7 +7,6 @@ EXPECTED_REASON_CODES = {"HOW_NIGHT_LIMIT_EXCEEDED", "WHERE_DESTINATION_NEW_ACCO
 
 
 class TestChallengeExample:
-    @pytest.mark.xfail(strict=True, reason="until T10")
     def test_challenge_example_is_rejected_by_two_suspicious_axes(self):
         payload = PayloadGenerator.create_challenge_example_payload()
 
