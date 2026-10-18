@@ -109,3 +109,21 @@ def test_floor_never_softens_a_rejection(make_context, monkeypatch, local_dateti
     assert result.decision == Decision.REJECTED
     assert result.decision_basis == DecisionBasis.TWO_SUSPICIOUS_AXES
     assert NIGHT_LIMIT in result.floors
+
+
+def test_unregistered_device_floor_alone_never_rejects(make_context):
+    result = evaluate(make_context(transaction={"amount": 5000000}, payer={"unknown_device_amount_today": 5000000}))
+
+    assert result.floors == [UNREGISTERED_DEVICE]
+    assert result.decision == Decision.TWO_FACTOR_REQUIRED
+
+
+def test_rejection_from_another_axis_prevails_over_the_unregistered_device_floor(make_context, monkeypatch):
+    critical = fired("WHERE_STUB", "where", RiskLevel.CRITICAL, {}, {}, "stub", "stub")
+    monkeypatch.setattr(where, "analyze", lambda context: [critical])
+
+    result = evaluate(make_context(transaction={"amount": 50000}))
+
+    assert result.decision == Decision.REJECTED
+    assert result.decision_basis == DecisionBasis.CRITICAL_AXIS
+    assert result.floors == [UNREGISTERED_DEVICE]
