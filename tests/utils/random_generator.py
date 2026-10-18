@@ -31,6 +31,24 @@ class RandomGenerator:
         return f"{number[:3]}.{number[3:6]}.{number[6:9]}-{number[9:]}"
 
     @staticmethod
+    def invalid_cpf() -> str:
+        digits = [random.randint(0, 9) for _ in range(9)]
+        for weight_start in (10, 11):
+            total = sum(digit * weight for digit, weight in zip(digits, range(weight_start, 1, -1)))
+            digits.append(total * 10 % 11 % 10)
+        digits[-1] = (digits[-1] + 1) % 10
+        number = "".join(map(str, digits))
+        return f"{number[:3]}.{number[3:6]}.{number[6:9]}-{number[9:]}"
+
+    @staticmethod
+    def unmasked_cpf() -> str:
+        digits = [random.randint(0, 9) for _ in range(9)]
+        for weight_start in (10, 11):
+            total = sum(digit * weight for digit, weight in zip(digits, range(weight_start, 1, -1)))
+            digits.append(total * 10 % 11 % 10)
+        return "".join(map(str, digits))
+
+    @staticmethod
     def cnpj() -> str:
         digits = [random.randint(0, 9) for _ in range(12)]
         for weights in CNPJ_WEIGHTS:
@@ -38,3 +56,21 @@ class RandomGenerator:
             digits.append(0 if remainder < 2 else 11 - remainder)
         number = "".join(map(str, digits))
         return f"{number[:2]}.{number[2:5]}.{number[5:8]}/{number[8:12]}-{number[12:]}"
+
+    @staticmethod
+    def invalid_cnpj() -> str:
+        digits = [random.randint(0, 9) for _ in range(12)]
+        for weights in CNPJ_WEIGHTS:
+            remainder = sum(digit * weight for digit, weight in zip(digits, weights)) % 11
+            digits.append(0 if remainder < 2 else 11 - remainder)
+        digits[-1] = (digits[-1] + 1) % 10
+        number = "".join(map(str, digits))
+        return f"{number[:2]}.{number[2:5]}.{number[5:8]}/{number[8:12]}-{number[12:]}"
+
+    @staticmethod
+    def unmasked_cnpj() -> str:
+        digits = [random.randint(0, 9) for _ in range(12)]
+        for weights in CNPJ_WEIGHTS:
+            remainder = sum(digit * weight for digit, weight in zip(digits, weights)) % 11
+            digits.append(0 if remainder < 2 else 11 - remainder)
+        return "".join(map(str, digits))

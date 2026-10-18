@@ -21,3 +21,80 @@ class PixTransactionNotFound(QIException):
         description = "No Pix transaction was found with the given id."
         translation = "Nenhum Pix foi encontrado com o id informado."
         super().__init__(title, self.code, http_status, description, translation)
+
+
+class InvalidCpf(QIException):
+    code = "RNV001002"
+
+    def __init__(self) -> None:
+        title = "Invalid CPF"
+        http_status = 422
+        description = "The document number has invalid CPF check digits."
+        translation = "O CPF informado possui dígitos verificadores inválidos."
+        super().__init__(title, self.code, http_status, description, translation)
+
+
+class InvalidCnpj(QIException):
+    code = "RNV001020"
+
+    def __init__(self) -> None:
+        title = "Invalid CNPJ"
+        http_status = 422
+        description = "The document number has invalid CNPJ check digits."
+        translation = "O CNPJ informado possui dígitos verificadores inválidos."
+        super().__init__(title, self.code, http_status, description, translation)
+
+
+class AccountOpenedAfterTransaction(QIException):
+    code = "RNV001040"
+
+    def __init__(self) -> None:
+        title = "Account Opened After Transaction"
+        http_status = 422
+        description = "The account opening date cannot be after the transaction date."
+        translation = "A data de abertura da conta não pode ser posterior à data da transação."
+        super().__init__(title, self.code, http_status, description, translation)
+
+
+class TransactionDateInFuture(QIException):
+    code = "RNV001041"
+
+    def __init__(self) -> None:
+        title = "Transaction Date In Future"
+        http_status = 422
+        description = "The transaction date cannot be more than 5 minutes in the future."
+        translation = "A data da transação não pode estar mais de 5 minutos no futuro."
+        super().__init__(title, self.code, http_status, description, translation)
+
+
+class SourceAndDestinationAccountsAreTheSame(QIException):
+    code = "RNV001042"
+
+    def __init__(self) -> None:
+        title = "Source And Destination Accounts Are The Same"
+        http_status = 422
+        description = "The source and destination accounts cannot be the same."
+        translation = "A conta de origem e a conta de destino não podem ser iguais."
+        super().__init__(title, self.code, http_status, description, translation)
+
+
+class InvalidIpAddress(QIException):
+    code = "RNV001043"
+
+    def __init__(self) -> None:
+        title = "Invalid IP Address"
+        http_status = 422
+        description = "The source IP address is not a valid IPv4 or IPv6 address."
+        translation = "O endereço IP de origem não é um endereço IPv4 ou IPv6 válido."
+        super().__init__(title, self.code, http_status, description, translation)
+
+
+class AccountConflict(QIException):
+    code = "RNV001044"
+
+    def __init__(self) -> None:
+        title = "Account Conflict"
+        http_status = 409
+        description = "The account is already known with a different holder or different opening date."
+        translation = "A conta já é conhecida com outro titular ou outra data de abertura."
+        super().__init__(title, self.code, http_status, description, translation)

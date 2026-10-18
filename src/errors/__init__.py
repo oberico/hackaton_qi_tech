@@ -10,13 +10,28 @@ from errors.custom_errors import (
     ServiceBusy,
     ValueOutOfRange,
 )
-from errors.pix_transaction_errors import PixIdReusedWithDifferentPayload, PixTransactionNotFound
+from errors.pix_transaction_errors import (
+    AccountConflict,
+    AccountOpenedAfterTransaction,
+    InvalidCnpj,
+    InvalidCpf,
+    InvalidIpAddress,
+    PixIdReusedWithDifferentPayload,
+    PixTransactionNotFound,
+    SourceAndDestinationAccountsAreTheSame,
+    TransactionDateInFuture,
+)
 
 __all__ = [
     "QIException",
+    "AccountConflict",
+    "AccountOpenedAfterTransaction",
     "FieldNotAllowed",
     "ForbiddenNotInternal",
+    "InvalidCnpj",
+    "InvalidCpf",
     "InvalidFormat",
+    "InvalidIpAddress",
     "InvalidSchema",
     "MethodNotAllowed",
     "MissingField",
@@ -24,5 +39,7 @@ __all__ = [
     "PixIdReusedWithDifferentPayload",
     "PixTransactionNotFound",
     "ServiceBusy",
+    "SourceAndDestinationAccountsAreTheSame",
+    "TransactionDateInFuture",
     "ValueOutOfRange",
 ]

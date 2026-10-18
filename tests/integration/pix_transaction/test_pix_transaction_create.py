@@ -108,7 +108,9 @@ class TestPixTransactionCreate:
             "amount_as_string": lambda payload: payload.update(amount="150000"),
             "amount_as_boolean": lambda payload: payload.update(amount=True),
             "amount_with_cents_fraction": lambda payload: payload.update(amount=1500.5),
-            "cpf_without_mask": lambda payload: payload["source_account"]["owner"].update(document_number="12345678909"),
+            "cpf_without_mask": lambda payload: payload["source_account"]["owner"].update(
+                document_number=RandomGenerator.unmasked_cpf()
+            ),
             "date_without_time_and_offset": lambda payload: payload.update(transaction_date="2026-10-17"),
         }
         for case, change in cases.items():

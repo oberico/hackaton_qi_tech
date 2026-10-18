@@ -4,6 +4,7 @@ from typing import Tuple
 
 from constants import OWN_PARTICIPANT
 from controllers.base_controller import BaseController
+from controllers.pix_transaction_validation import validate_payload_semantics
 from controllers.risk_context_builder import build_risk_context, person_type_of, utc_offset_minutes_of
 from dtos import PixAnalysisDto
 from errors import PixIdReusedWithDifferentPayload, PixTransactionNotFound
@@ -81,6 +82,7 @@ class PixTransactionController(BaseController):
 
     def create(self, payload: dict) -> Tuple[dict, bool]:
         started_at = time.perf_counter()
+        validate_payload_semantics(payload, self.accounts)
         source_account, _ = self._upsert_account(OWN_PARTICIPANT, payload["source_account"])
         destination_account, destination_participant = self._upsert_account(
             payload["destination_account"]["participant"], payload["destination_account"]
