@@ -42,14 +42,14 @@ Regras para quem desenvolve uma tarefa:
 1. **Uma tarefa = uma branch = um PR.** Branch a partir de `develop` atualizada: `feat/<ID>-<nome-curto>` (ex.: `feat/T07-get-pix-transaction`). PR sempre para `develop`.
 2. **Só toque nos arquivos da tarefa.** Precisou mexer em outro arquivo (principalmente `database/database.sql`, `src/engine/risk_context.py`, `src/engine/policy.py`, `CLAUDE.md`, `docs/catalogo-de-erros.md`)? **Pare e pergunte ao Ramon.** Esses arquivos são contrato: mudança neles só pelo Ramon.
 3. **Não invente regra de negócio, código de erro, parâmetro de política, tabela ou coluna.** Se a tarefa não diz, pergunte. Na dúvida entre duas leituras, escolha a mais conservadora e escreva a dúvida na descrição do PR.
-4. **TDD:** o teste vem primeiro e está no mesmo PR. Antes de abrir o PR: `docker compose down -v && docker compose up -d`, todos os testes verdes (`pytest`), `flake8` limpo.
+4. **TDD, um ciclo por comportamento observável** (ponta a ponta pela interface pública: HTTP na integração, `evaluate()` no motor; caminho feliz, cada erro e cada borda). Cada ciclo tem três commits na branch, nesta ordem: `test(<ID>): red - <comportamento>` (só o teste, rodado e falhando pelo motivo certo, não por import ou typo), `feat(<ID>): green - <comportamento>` (o mínimo para passar) e, se houver o que limpar, `refactor(<ID>): <o que mudou>` (suíte verde antes e depois). Nunca teste e código no mesmo commit. Teste que passa de primeira só vale depois de quebrar o código de propósito, ver falhar e desfazer. Tarefa sem comportamento testável (documentação, infra) não tem ciclo: valide rodando do zero. Antes de abrir o PR: `docker compose down -v && docker compose up -d`, todos os testes verdes (`pytest`), `flake8` limpo.
 5. **README no mesmo PR:** tarefa que cria ou muda regra, parâmetro, rota ou comando atualiza a linha correspondente do README.md.
-6. **PR pequeno** (idealmente < 300 linhas). Descrição do PR, nesta ordem: `Tarefa: <ID>` · o que foi feito · como testar (comandos) · arquivos tocados · dúvidas/decisões tomadas · o que ficou de fora.
+6. **PR pequeno** (idealmente < 300 linhas). Descrição do PR, nesta ordem: `Tarefa: <ID>` · o que foi feito · **Ciclos TDD** (por ciclo: o comportamento, a saída real do red com o nome do teste e a linha do erro, e a do green; PR de código sem esta seção volta) · como testar (comandos) · arquivos tocados · dúvidas/decisões tomadas · o que ficou de fora.
 7. Atualize o estado da sua tarefa no `TASKS.md` (a fazer → fazendo → em revisão) no próprio PR.
 8. Bloqueou mais de 15 minutos? Avise o Ramon no grupo com o ID da tarefa. Não contorne o bloqueio mexendo em contrato.
 
 Regras para o Ramon (integrador):
-- Revisa em janelas curtas (~45 min), na ordem do `TASKS.md` (P0 antes). Confere: critério de pronto da tarefa, convenções deste arquivo, testes verdes, README atualizado, nenhum arquivo de contrato alterado sem combinar.
+- Revisa em janelas curtas (~45 min), na ordem do `TASKS.md` (P0 antes). Confere: critério de pronto da tarefa, a seção Ciclos TDD e a ordem red → green → refactor nos commits, convenções deste arquivo, testes verdes, README atualizado, nenhum arquivo de contrato alterado sem combinar.
 - Merge em `develop` com squash. `main` só recebe `develop` no code freeze (08:00).
 - PR só de README ou de teste puro pode ser revisado pela outra colega; o Ramon é avisado e faz o merge.
 
