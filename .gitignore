@@ -1,0 +1,80 @@
+# ─────────────────────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+local.env
+*.pem
+*.key
+*.p12
+*.pfx
+credentials
+.aws/
+# --- Dados -------------------------------------------------
+*.csv
+*.xlsx
+*.xls
+*.dump
+*.sql.gz
+*.parquet
+*.sqlite
+*.db
+
+# --- Python ------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+.python-version
+
+# --- Ambiente virtual --------------------------------------
+env/
+venv/
+.venv/
+
+# --- Testes e cobertura ------------------------------------
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+.tox/
+.cache
+
+# --- Editor / IDE ------------------------------------------
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# --- Ferramentas de IA -------------------------------------
+.claude/settings.local.json
+
+# --- Empacotamento / binários ------------------------------
+*.zip
+*.tar
+*.tar.gz
+*.7z
+*.rar
+
+# --- Tipagem estática --------------------------------------
+.mypy_cache/
+.ruff_cache/
+reports/
+payload.json
+
+# --- Anotações locais do time (não vão para o repositório) ---
+.local/
+*.pyc
+
+# --- Ferramentas de IA / Documentos internos de trabalho ---
+.claude/
+GEMINI.md
+.local-log*.md
+TASKS.md
+docs/tarefas/
+docs/duvidas-decisoes.md

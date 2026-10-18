@@ -1,0 +1,1364 @@
+{
+  "_type": "export",
+  "__export_format": 4,
+  "__export_date": "2026-10-18T03:30:00.000Z",
+  "__export_source": "insomnia.desktop.app:v10",
+  "resources": [
+    {
+      "_id": "wrk_antifraud_pix",
+      "_type": "workspace",
+      "parentId": null,
+      "name": "Antifraude Pix RNV",
+      "scope": "collection",
+      "description": "Coleção de testes manuais e de carga do motor antifraude. Suba a API com `docker compose up -d`; para repetir um cenário sem colidir com o histórico anterior, regere a coleção com outro --run (veja o README)."
+    },
+    {
+      "_id": "env_base",
+      "_type": "environment",
+      "parentId": "wrk_antifraud_pix",
+      "name": "Base Environment",
+      "metaSortKey": 1,
+      "data": {
+        "base_url": "http://localhost:8001",
+        "internal_token": "internal-token-dev",
+        "run": "1001"
+      },
+      "dataPropertyOrder": {
+        "&": [
+          "base_url",
+          "internal_token",
+          "run"
+        ]
+      },
+      "color": null,
+      "isPrivate": false,
+      "created": 1760760000000,
+      "modified": 1760760000000
+    },
+    {
+      "_id": "fld_health",
+      "_type": "request_group",
+      "parentId": "wrk_antifraud_pix",
+      "name": "0. Saúde",
+      "description": "",
+      "environment": {},
+      "metaSortKey": -999900
+    },
+    {
+      "_id": "req_root",
+      "_type": "request",
+      "parentId": "fld_health",
+      "name": "GET /",
+      "method": "GET",
+      "url": "http://localhost:8001/",
+      "headers": [],
+      "description": "",
+      "metaSortKey": -999800,
+      "parameters": [],
+      "authentication": {}
+    },
+    {
+      "_id": "req_health",
+      "_type": "request",
+      "parentId": "fld_health",
+      "name": "GET /health_check",
+      "method": "GET",
+      "url": "http://localhost:8001/health_check",
+      "headers": [],
+      "description": "Esperado: 200 {\"status\":\"ok\"}",
+      "metaSortKey": -999700,
+      "parameters": [],
+      "authentication": {}
+    },
+    {
+      "_id": "fld_challenge",
+      "_type": "request_group",
+      "parentId": "wrk_antifraud_pix",
+      "name": "1. Payload do desafio",
+      "description": "",
+      "environment": {},
+      "metaSortKey": -999600
+    },
+    {
+      "_id": "req_challenge",
+      "_type": "request",
+      "parentId": "fld_challenge",
+      "name": "POST payload do desafio (id fixo pix-000123)",
+      "method": "POST",
+      "url": "http://localhost:8001/pix/transaction",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        },
+        {
+          "name": "INTERNAL-TOKEN",
+          "value": "internal-token-dev"
+        }
+      ],
+      "description": "Esperado: 201 rejected, decision_basis two_suspicious_axes (how: noturno PF→PF acima de R$ 1.000; where: destino aberto há 7 dias). Repetir o mesmo envio devolve 200 com a mesma análise (idempotência).",
+      "metaSortKey": -999500,
+      "parameters": [],
+      "authentication": {},
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"id\": \"pix-000123\",\n  \"amount\": 150000,\n  \"transaction_date\": \"2026-10-17T22:15:00-03:00\",\n  \"source_account\": {\n    \"branch\": \"0001\",\n    \"account_number\": \"88213\",\n    \"opening_date\": \"2025-03-02T10:00:00-03:00\",\n    \"owner\": {\n      \"document_number\": \"123.456.789-09\"\n    }\n  },\n  \"destination_account\": {\n    \"participant\": \"60701190\",\n    \"branch\": \"3675\",\n    \"account_number\": \"10442\",\n    \"opening_date\": \"2026-10-10T09:00:00-03:00\",\n    \"owner\": {\n      \"document_number\": \"987.654.321-00\"\n    }\n  },\n  \"source\": {\n    \"device_id\": \"dvc-9f2c71a8\",\n    \"channel\": \"app\",\n    \"ip\": \"198.51.100.23\",\n    \"geolocation\": {\n      \"latitude\": -23.56,\n      \"longitude\": -46.65\n    }\n  }\n}"
+      }
+    },
+    {
+      "_id": "req_challenge_get",
+      "_type": "request",
+      "parentId": "fld_challenge",
+      "name": "GET pix-000123",
+      "method": "GET",
+      "url": "http://localhost:8001/pix/transaction/pix-000123",
+      "headers": [
+        {
+          "name": "INTERNAL-TOKEN",
+          "value": "internal-token-dev"
+        }
+      ],
+      "description": "Esperado: 200 com o mesmo key/status/metadata do POST.",
+      "metaSortKey": -999400,
+      "parameters": [],
+      "authentication": {}
+    },
+    {
+      "_id": "fld_idem",
+      "_type": "request_group",
+      "parentId": "wrk_antifraud_pix",
+      "name": "2. Idempotência",
+      "description": "",
+      "environment": {},
+      "metaSortKey": -999300
+    },
+    {
+      "_id": "req_idem_1",
+      "_type": "request",
+      "parentId": "fld_idem",
+      "name": "1. POST original",
+      "method": "POST",
+      "url": "http://localhost:8001/pix/transaction",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        },
+        {
+          "name": "INTERNAL-TOKEN",
+          "value": "internal-token-dev"
+        }
+      ],
+      "description": "Esperado: 201 (ou 200 se já rodou com este `run`).",
+      "metaSortKey": -999200,
+      "parameters": [],
+      "authentication": {},
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"id\": \"idem-1001\",\n  \"amount\": 5000,\n  \"transaction_date\": \"2026-10-17T14:00:00-03:00\",\n  \"source_account\": {\n    \"branch\": \"0001\",\n    \"account_number\": \"100101\",\n    \"opening_date\": \"2025-03-02T10:00:00-03:00\",\n    \"owner\": {\n      \"document_number\": \"100.007.919-89\"\n    }\n  },\n  \"destination_account\": {\n    \"participant\": \"60701190\",\n    \"branch\": \"3675\",\n    \"account_number\": \"1001901\",\n    \"opening_date\": \"2024-01-10T09:00:00-03:00\",\n    \"owner\": {\n      \"document_number\": \"300.006.007-33\"\n    }\n  },\n  \"source\": {\n    \"device_id\": \"dvc-idem-1001\",\n    \"channel\": \"app\",\n    \"ip\": \"198.51.100.23\",\n    \"geolocation\": {\n      \"latitude\": -23.56,\n      \"longitude\": -46.65\n    }\n  }\n}"
+      }
+    },
+    {
+      "_id": "req_idem_2",
+      "_type": "request",
+      "parentId": "fld_idem",
+      "name": "2. POST repetido idêntico",
+      "method": "POST",
+      "url": "http://localhost:8001/pix/transaction",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        },
+        {
+          "name": "INTERNAL-TOKEN",
+          "value": "internal-token-dev"
+        }
+      ],
+      "description": "Esperado: 200, mesma key.",
+      "metaSortKey": -999100,
+      "parameters": [],
+      "authentication": {},
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"id\": \"idem-1001\",\n  \"amount\": 5000,\n  \"transaction_date\": \"2026-10-17T14:00:00-03:00\",\n  \"source_account\": {\n    \"branch\": \"0001\",\n    \"account_number\": \"100101\",\n    \"opening_date\": \"2025-03-02T10:00:00-03:00\",\n    \"owner\": {\n      \"document_number\": \"100.007.919-89\"\n    }\n  },\n  \"destination_account\": {\n    \"participant\": \"60701190\",\n    \"branch\": \"3675\",\n    \"account_number\": \"1001901\",\n    \"opening_date\": \"2024-01-10T09:00:00-03:00\",\n    \"owner\": {\n      \"document_number\": \"300.006.007-33\"\n    }\n  },\n  \"source\": {\n    \"device_id\": \"dvc-idem-1001\",\n    \"channel\": \"app\",\n    \"ip\": \"198.51.100.23\",\n    \"geolocation\": {\n      \"latitude\": -23.56,\n      \"longitude\": -46.65\n    }\n  }\n}"
+      }
+    },
+    {
+      "_id": "req_idem_3",
+      "_type": "request",
+      "parentId": "fld_idem",
+      "name": "3. POST mesmo id, amount diferente",
+      "method": "POST",
+      "url": "http://localhost:8001/pix/transaction",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        },
+        {
+          "name": "INTERNAL-TOKEN",
+          "value": "internal-token-dev"
+        }
+      ],
+      "description": "Esperado: 422 RNV001024.",
+      "metaSortKey": -999000,
+      "parameters": [],
+      "authentication": {},
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"id\": \"idem-1001\",\n  \"amount\": 5100,\n  \"transaction_date\": \"2026-10-17T14:00:00-03:00\",\n  \"source_account\": {\n    \"branch\": \"0001\",\n    \"account_number\": \"100101\",\n    \"opening_date\": \"2025-03-02T10:00:00-03:00\",\n    \"owner\": {\n      \"document_number\": \"100.007.919-89\"\n    }\n  },\n  \"destination_account\": {\n    \"participant\": \"60701190\",\n    \"branch\": \"3675\",\n    \"account_number\": \"1001901\",\n    \"opening_date\": \"2024-01-10T09:00:00-03:00\",\n    \"owner\": {\n      \"document_number\": \"300.006.007-33\"\n    }\n  },\n  \"source\": {\n    \"device_id\": \"dvc-idem-1001\",\n    \"channel\": \"app\",\n    \"ip\": \"198.51.100.23\",\n    \"geolocation\": {\n      \"latitude\": -23.56,\n      \"longitude\": -46.65\n    }\n  }\n}"
+      }
+    },
+    {
+      "_id": "req_idem_get",
+      "_type": "request",
+      "parentId": "fld_idem",
+      "name": "4. GET",
+      "method": "GET",
+      "url": "http://localhost:8001/pix/transaction/idem-1001",
+      "headers": [
+        {
+          "name": "INTERNAL-TOKEN",
+          "value": "internal-token-dev"
+        }
+      ],
+      "description": "Esperado: 200.",
+      "metaSortKey": -998900,
+      "parameters": [],
+      "authentication": {}
+    },
+    {
+      "_id": "fld_format",
+      "_type": "request_group",
+      "parentId": "wrk_antifraud_pix",
+      "name": "3. Erros de formato e token (400/403)",
+      "description": "",
+      "environment": {},
+      "metaSortKey": -998800
+    },
+    {
+      "_id": "req_f1",
+      "_type": "request",
+      "parentId": "fld_format",
+      "name": "Corpo que não é objeto",
+      "method": "POST",
+      "url": "http://localhost:8001/pix/transaction",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        },
+        {
+          "name": "INTERNAL-TOKEN",
+          "value": "internal-token-dev"
+        }
+      ],
+      "description": "Esperado: 400 RNV000001",
+      "metaSortKey": -998700,
+      "parameters": [],
+      "authentication": {},
+      "body": {
+        "mimeType": "application/json",
+        "text": "[1,2,3]"
+      }
+    },
+    {
+      "_id": "req_f2",
+      "_type": "request",
+      "parentId": "fld_format",
+      "name": "Sem amount",
+      "method": "POST",
+      "url": "http://localhost:8001/pix/transaction",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        },
+        {
+          "name": "INTERNAL-TOKEN",
+          "value": "internal-token-dev"
+        }
+      ],
+      "description": "Esperado: 400 RNV000007",
+      "metaSortKey": -998600,
+      "parameters": [],
+      "authentication": {},
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"id\": \"fmt-1001\",\n  \"transaction_date\": \"2026-10-17T14:00:00-03:00\",\n  \"source_account\": {\n    \"branch\": \"0001\",\n    \"account_number\": \"100102\",\n    \"opening_date\": \"2025-03-02T10:00:00-03:00\",\n    \"owner\": {\n      \"document_number\": \"100.015.838-16\"\n    }\n  },\n  \"destination_account\": {\n    \"participant\": \"60701190\",\n    \"branch\": \"3675\",\n    \"account_number\": \"1001902\",\n    \"opening_date\": \"2024-01-10T09:00:00-03:00\",\n    \"owner\": {\n      \"document_number\": \"300.012.014-92\"\n    }\n  },\n  \"source\": {\n    \"device_id\": \"dvc-fmt-1001\",\n    \"channel\": \"app\",\n    \"ip\": \"198.51.100.23\",\n    \"geolocation\": {\n      \"latitude\": -23.56,\n      \"longitude\": -46.65\n    }\n  }\n}"
+      }
+    },
+    {
+      "_id": "req_f3",
+      "_type": "request",
+      "parentId": "fld_format",
+      "name": "Campo extra",
+      "method": "POST",
+      "url": "http://localhost:8001/pix/transaction",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        },
+        {
+          "name": "INTERNAL-TOKEN",
+          "value": "internal-token-dev"
+        }
+      ],
+      "description": "Esperado: 400 RNV000008",
+      "metaSortKey": -998500,
+      "parameters": [],
+      "authentication": {},
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"id\": \"fmt-1001\",\n  \"amount\": 5000,\n  \"transaction_date\": \"2026-10-17T14:00:00-03:00\",\n  \"source_account\": {\n    \"branch\": \"0001\",\n    \"account_number\": \"100102\",\n    \"opening_date\": \"2025-03-02T10:00:00-03:00\",\n    \"owner\": {\n      \"document_number\": \"100.015.838-16\"\n    }\n  },\n  \"destination_account\": {\n    \"participant\": \"60701190\",\n    \"branch\": \"3675\",\n    \"account_number\": \"1001902\",\n    \"opening_date\": \"2024-01-10T09:00:00-03:00\",\n    \"owner\": {\n      \"document_number\": \"300.012.014-92\"\n    }\n  },\n  \"source\": {\n    \"device_id\": \"dvc-fmt-1001\",\n    \"channel\": \"app\",\n    \"ip\": \"198.51.100.23\",\n    \"geolocation\": {\n      \"latitude\": -23.56,\n      \"longitude\": -46.65\n    }\n  },\n  \"extra\": 1\n}"
+      }
+    },
+    {
+      "_id": "req_f4",
+      "_type": "request",
+      "parentId": "fld_format",
+      "name": "CPF sem máscara",
+      "method": "POST",
+      "url": "http://localhost:8001/pix/transaction",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        },
+        {
+          "name": "INTERNAL-TOKEN",
+          "value": "internal-token-dev"
+        }
+      ],
+      "description": "Esperado: 400 RNV000009",
+      "metaSortKey": -998400,
+      "parameters": [],
+      "authentication": {},
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"id\": \"fmt-1001\",\n  \"amount\": 5000,\n  \"transaction_date\": \"2026-10-17T14:00:00-03:00\",\n  \"source_account\": {\n    \"branch\": \"0001\",\n    \"account_number\": \"100102\",\n    \"opening_date\": \"2025-03-02T10:00:00-03:00\",\n    \"owner\": {\n      \"document_number\": \"12345678909\"\n    }\n  },\n  \"destination_account\": {\n    \"participant\": \"60701190\",\n    \"branch\": \"3675\",\n    \"account_number\": \"1001902\",\n    \"opening_date\": \"2024-01-10T09:00:00-03:00\",\n    \"owner\": {\n      \"document_number\": \"300.012.014-92\"\n    }\n  },\n  \"source\": {\n    \"device_id\": \"dvc-fmt-1001\",\n    \"channel\": \"app\",\n    \"ip\": \"198.51.100.23\",\n    \"geolocation\": {\n      \"latitude\": -23.56,\n      \"longitude\": -46.65\n    }\n  }\n}"
+      }
+    },
+    {
+      "_id": "req_f5",
+      "_type": "request",
+      "parentId": "fld_format",
+      "name": "Data sem fuso",
+      "method": "POST",
+      "url": "http://localhost:8001/pix/transaction",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        },
+        {
+          "name": "INTERNAL-TOKEN",
+          "value": "internal-token-dev"
+        }
+      ],
+      "description": "Esperado: 400 RNV000009",
+      "metaSortKey": -998300,
+      "parameters": [],
+      "authentication": {},
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"id\": \"fmt-1001\",\n  \"amount\": 5000,\n  \"transaction_date\": \"2026-10-17T14:00:00\",\n  \"source_account\": {\n    \"branch\": \"0001\",\n    \"account_number\": \"100102\",\n    \"opening_date\": \"2025-03-02T10:00:00-03:00\",\n    \"owner\": {\n      \"document_number\": \"100.015.838-16\"\n    }\n  },\n  \"destination_account\": {\n    \"participant\": \"60701190\",\n    \"branch\": \"3675\",\n    \"account_number\": \"1001902\",\n    \"opening_date\": \"2024-01-10T09:00:00-03:00\",\n    \"owner\": {\n      \"document_number\": \"300.012.014-92\"\n    }\n  },\n  \"source\": {\n    \"device_id\": \"dvc-fmt-1001\",\n    \"channel\": \"app\",\n    \"ip\": \"198.51.100.23\",\n    \"geolocation\": {\n      \"latitude\": -23.56,\n      \"longitude\": -46.65\n    }\n  }\n}"
+      }
+    },
+    {
+      "_id": "req_f6",
+      "_type": "request",
+      "parentId": "fld_format",
+      "name": "ISPB com 7 dígitos",
+      "method": "POST",
+      "url": "http://localhost:8001/pix/transaction",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        },
+        {
+          "name": "INTERNAL-TOKEN",
+          "value": "internal-token-dev"
+        }
+      ],
+      "description": "Esperado: 400 RNV000009",
+      "metaSortKey": -998200,
+      "parameters": [],
+      "authentication": {},
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"id\": \"fmt-1001\",\n  \"amount\": 5000,\n  \"transaction_date\": \"2026-10-17T14:00:00-03:00\",\n  \"source_account\": {\n    \"branch\": \"0001\",\n    \"account_number\": \"100102\",\n    \"opening_date\": \"2025-03-02T10:00:00-03:00\",\n    \"owner\": {\n      \"document_number\": \"100.015.838-16\"\n    }\n  },\n  \"destination_account\": {\n    \"participant\": \"1234567\",\n    \"branch\": \"3675\",\n    \"account_number\": \"1001902\",\n    \"opening_date\": \"2024-01-10T09:00:00-03:00\",\n    \"owner\": {\n      \"document_number\": \"300.012.014-92\"\n    }\n  },\n  \"source\": {\n    \"device_id\": \"dvc-fmt-1001\",\n    \"channel\": \"app\",\n    \"ip\": \"198.51.100.23\",\n    \"geolocation\": {\n      \"latitude\": -23.56,\n      \"longitude\": -46.65\n    }\n  }\n}"
+      }
+    },
+    {
+      "_id": "req_f7",
+      "_type": "request",
+      "parentId": "fld_format",
+      "name": "amount = 0",
+      "method": "POST",
+      "url": "http://localhost:8001/pix/transaction",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        },
+        {
+          "name": "INTERNAL-TOKEN",
+          "value": "internal-token-dev"
+        }
+      ],
+      "description": "Esperado: 400 RNV000010",
+      "metaSortKey": -998100,
+      "parameters": [],
+      "authentication": {},
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"id\": \"fmt-1001\",\n  \"amount\": 0,\n  \"transaction_date\": \"2026-10-17T14:00:00-03:00\",\n  \"source_account\": {\n    \"branch\": \"0001\",\n    \"account_number\": \"100102\",\n    \"opening_date\": \"2025-03-02T10:00:00-03:00\",\n    \"owner\": {\n      \"document_number\": \"100.015.838-16\"\n    }\n  },\n  \"destination_account\": {\n    \"participant\": \"60701190\",\n    \"branch\": \"3675\",\n    \"account_number\": \"1001902\",\n    \"opening_date\": \"2024-01-10T09:00:00-03:00\",\n    \"owner\": {\n      \"document_number\": \"300.012.014-92\"\n    }\n  },\n  \"source\": {\n    \"device_id\": \"dvc-fmt-1001\",\n    \"channel\": \"app\",\n    \"ip\": \"198.51.100.23\",\n    \"geolocation\": {\n      \"latitude\": -23.56,\n      \"longitude\": -46.65\n    }\n  }\n}"
+      }
+    },
+    {
+      "_id": "req_f8",
+      "_type": "request",
+      "parentId": "fld_format",
+      "name": "Latitude 91",
+      "method": "POST",
+      "url": "http://localhost:8001/pix/transaction",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        },
+        {
+          "name": "INTERNAL-TOKEN",
+          "value": "internal-token-dev"
+        }
+      ],
+      "description": "Esperado: 400 RNV000010",
+      "metaSortKey": -998000,
+      "parameters": [],
+      "authentication": {},
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"id\": \"fmt-1001\",\n  \"amount\": 5000,\n  \"transaction_date\": \"2026-10-17T14:00:00-03:00\",\n  \"source_account\": {\n    \"branch\": \"0001\",\n    \"account_number\": \"100102\",\n    \"opening_date\": \"2025-03-02T10:00:00-03:00\",\n    \"owner\": {\n      \"document_number\": \"100.015.838-16\"\n    }\n  },\n  \"destination_account\": {\n    \"participant\": \"60701190\",\n    \"branch\": \"3675\",\n    \"account_number\": \"1001902\",\n    \"opening_date\": \"2024-01-10T09:00:00-03:00\",\n    \"owner\": {\n      \"document_number\": \"300.012.014-92\"\n    }\n  },\n  \"source\": {\n    \"device_id\": \"dvc-fmt-1001\",\n    \"channel\": \"app\",\n    \"ip\": \"198.51.100.23\",\n    \"geolocation\": {\n      \"latitude\": 91,\n      \"longitude\": -46.65\n    }\n  }\n}"
+      }
+    },
+    {
+      "_id": "req_f9",
+      "_type": "request",
+      "parentId": "fld_format",
+      "name": "POST sem token",
+      "method": "POST",
+      "url": "http://localhost:8001/pix/transaction",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "description": "Esperado: 403 RNV000002",
+      "metaSortKey": -997900,
+      "parameters": [],
+      "authentication": {},
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"id\": \"fmt-1001\",\n  \"amount\": 5000,\n  \"transaction_date\": \"2026-10-17T14:00:00-03:00\",\n  \"source_account\": {\n    \"branch\": \"0001\",\n    \"account_number\": \"100102\",\n    \"opening_date\": \"2025-03-02T10:00:00-03:00\",\n    \"owner\": {\n      \"document_number\": \"100.015.838-16\"\n    }\n  },\n  \"destination_account\": {\n    \"participant\": \"60701190\",\n    \"branch\": \"3675\",\n    \"account_number\": \"1001902\",\n    \"opening_date\": \"2024-01-10T09:00:00-03:00\",\n    \"owner\": {\n      \"document_number\": \"300.012.014-92\"\n    }\n  },\n  \"source\": {\n    \"device_id\": \"dvc-fmt-1001\",\n    \"channel\": \"app\",\n    \"ip\": \"198.51.100.23\",\n    \"geolocation\": {\n      \"latitude\": -23.56,\n      \"longitude\": -46.65\n    }\n  }\n}"
+      }
+    },
+    {
+      "_id": "req_f10",
+      "_type": "request",
+      "parentId": "fld_format",
+      "name": "GET sem token",
+      "method": "GET",
+      "url": "http://localhost:8001/pix/transaction/qualquer",
+      "headers": [],
+      "description": "Esperado: 403 RNV000002",
+      "metaSortKey": -997800,
+      "parameters": [],
+      "authentication": {}
+    },
+    {
+      "_id": "req_f11",
+      "_type": "request",
+      "parentId": "fld_format",
+      "name": "GET inexistente",
+      "method": "GET",
+      "url": "http://localhost:8001/pix/transaction/nao-existe-xyz",
+      "headers": [
+        {
+          "name": "INTERNAL-TOKEN",
+          "value": "internal-token-dev"
+        }
+      ],
+      "description": "Esperado: 404 RNV001039",
+      "metaSortKey": -997700,
+      "parameters": [],
+      "authentication": {}
+    },
+    {
+      "_id": "fld_semantic",
+      "_type": "request_group",
+      "parentId": "wrk_antifraud_pix",
+      "name": "4. Erros de sentido (422/409)",
+      "description": "",
+      "environment": {},
+      "metaSortKey": -997600
+    },
+    {
+      "_id": "req_s1",
+      "_type": "request",
+      "parentId": "fld_semantic",
+      "name": "CPF com dígito inválido",
+      "method": "POST",
+      "url": "http://localhost:8001/pix/transaction",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        },
+        {
+          "name": "INTERNAL-TOKEN",
+          "value": "internal-token-dev"
+        }
+      ],
+      "description": "Esperado: 422 RNV001002",
+      "metaSortKey": -997500,
+      "parameters": [],
+      "authentication": {},
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"id\": \"sem-cpf-1001\",\n  \"amount\": 5000,\n  \"transaction_date\": \"2026-10-17T14:00:00-03:00\",\n  \"source_account\": {\n    \"branch\": \"0001\",\n    \"account_number\": \"100103\",\n    \"opening_date\": \"2025-03-02T10:00:00-03:00\",\n    \"owner\": {\n      \"document_number\": \"123.456.789-00\"\n    }\n  },\n  \"destination_account\": {\n    \"participant\": \"60701190\",\n    \"branch\": \"3675\",\n    \"account_number\": \"1001903\",\n    \"opening_date\": \"2024-01-10T09:00:00-03:00\",\n    \"owner\": {\n      \"document_number\": \"300.018.021-43\"\n    }\n  },\n  \"source\": {\n    \"device_id\": \"dvc-sem-1001\",\n    \"channel\": \"app\",\n    \"ip\": \"198.51.100.23\",\n    \"geolocation\": {\n      \"latitude\": -23.56,\n      \"longitude\": -46.65\n    }\n  }\n}"
+      }
+    },
+    {
+      "_id": "req_s2",
+      "_type": "request",
+      "parentId": "fld_semantic",
+      "name": "CNPJ inválido",
+      "method": "POST",
+      "url": "http://localhost:8001/pix/transaction",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        },
+        {
+          "name": "INTERNAL-TOKEN",
+          "value": "internal-token-dev"
+        }
+      ],
+      "description": "Esperado: 422 RNV001020",
+      "metaSortKey": -997400,
+      "parameters": [],
+      "authentication": {},
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"id\": \"sem-cnpj-1001\",\n  \"amount\": 5000,\n  \"transaction_date\": \"2026-10-17T14:00:00-03:00\",\n  \"source_account\": {\n    \"branch\": \"0001\",\n    \"account_number\": \"100103\",\n    \"opening_date\": \"2025-03-02T10:00:00-03:00\",\n    \"owner\": {\n      \"document_number\": \"100.023.757-53\"\n    }\n  },\n  \"destination_account\": {\n    \"participant\": \"60701190\",\n    \"branch\": \"3675\",\n    \"account_number\": \"1001903\",\n    \"opening_date\": \"2024-01-10T09:00:00-03:00\",\n    \"owner\": {\n      \"document_number\": \"11.111.111/1111-11\"\n    }\n  },\n  \"source\": {\n    \"device_id\": \"dvc-sem-1001\",\n    \"channel\": \"app\",\n    \"ip\": \"198.51.100.23\",\n    \"geolocation\": {\n      \"latitude\": -23.56,\n      \"longitude\": -46.65\n    }\n  }\n}"
+      }
+    },
+    {
+      "_id": "req_s3",
+      "_type": "request",
+      "parentId": "fld_semantic",
+      "name": "opening_date depois do Pix",
+      "method": "POST",
+      "url": "http://localhost:8001/pix/transaction",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        },
+        {
+          "name": "INTERNAL-TOKEN",
+          "value": "internal-token-dev"
+        }
+      ],
+      "description": "Esperado: 422 RNV001040",
+      "metaSortKey": -997300,
+      "parameters": [],
+      "authentication": {},
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"id\": \"sem-open-1001\",\n  \"amount\": 5000,\n  \"transaction_date\": \"2026-10-17T14:00:00-03:00\",\n  \"source_account\": {\n    \"branch\": \"0001\",\n    \"account_number\": \"100103\",\n    \"opening_date\": \"2026-12-01T10:00:00-03:00\",\n    \"owner\": {\n      \"document_number\": \"100.023.757-53\"\n    }\n  },\n  \"destination_account\": {\n    \"participant\": \"60701190\",\n    \"branch\": \"3675\",\n    \"account_number\": \"1001903\",\n    \"opening_date\": \"2024-01-10T09:00:00-03:00\",\n    \"owner\": {\n      \"document_number\": \"300.018.021-43\"\n    }\n  },\n  \"source\": {\n    \"device_id\": \"dvc-sem-1001\",\n    \"channel\": \"app\",\n    \"ip\": \"198.51.100.23\",\n    \"geolocation\": {\n      \"latitude\": -23.56,\n      \"longitude\": -46.65\n    }\n  }\n}"
+      }
+    },
+    {
+      "_id": "req_s4",
+      "_type": "request",
+      "parentId": "fld_semantic",
+      "name": "Pix no futuro",
+      "method": "POST",
+      "url": "http://localhost:8001/pix/transaction",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        },
+        {
+          "name": "INTERNAL-TOKEN",
+          "value": "internal-token-dev"
+        }
+      ],
+      "description": "Esperado: 422 RNV001041",
+      "metaSortKey": -997200,
+      "parameters": [],
+      "authentication": {},
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"id\": \"sem-future-1001\",\n  \"amount\": 5000,\n  \"transaction_date\": \"2030-01-01T10:00:00-03:00\",\n  \"source_account\": {\n    \"branch\": \"0001\",\n    \"account_number\": \"100103\",\n    \"opening_date\": \"2025-03-02T10:00:00-03:00\",\n    \"owner\": {\n      \"document_number\": \"100.023.757-53\"\n    }\n  },\n  \"destination_account\": {\n    \"participant\": \"60701190\",\n    \"branch\": \"3675\",\n    \"account_number\": \"1001903\",\n    \"opening_date\": \"2024-01-10T09:00:00-03:00\",\n    \"owner\": {\n      \"document_number\": \"300.018.021-43\"\n    }\n  },\n  \"source\": {\n    \"device_id\": \"dvc-sem-1001\",\n    \"channel\": \"app\",\n    \"ip\": \"198.51.100.23\",\n    \"geolocation\": {\n      \"latitude\": -23.56,\n      \"longitude\": -46.65\n    }\n  }\n}"
+      }
+    },
+    {
+      "_id": "req_s5",
+      "_type": "request",
+      "parentId": "fld_semantic",
+      "name": "Origem = destino",
+      "method": "POST",
+      "url": "http://localhost:8001/pix/transaction",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        },
+        {
+          "name": "INTERNAL-TOKEN",
+          "value": "internal-token-dev"
+        }
+      ],
+      "description": "Esperado: 422 RNV001042",
+      "metaSortKey": -997100,
+      "parameters": [],
+      "authentication": {},
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"id\": \"sem-same-1001\",\n  \"amount\": 5000,\n  \"transaction_date\": \"2026-10-17T14:00:00-03:00\",\n  \"source_account\": {\n    \"branch\": \"0001\",\n    \"account_number\": \"100103\",\n    \"opening_date\": \"2025-03-02T10:00:00-03:00\",\n    \"owner\": {\n      \"document_number\": \"100.023.757-53\"\n    }\n  },\n  \"destination_account\": {\n    \"participant\": \"99999999\",\n    \"branch\": \"0001\",\n    \"account_number\": \"100103\",\n    \"opening_date\": \"2024-01-10T09:00:00-03:00\",\n    \"owner\": {\n      \"document_number\": \"300.018.021-43\"\n    }\n  },\n  \"source\": {\n    \"device_id\": \"dvc-sem-1001\",\n    \"channel\": \"app\",\n    \"ip\": \"198.51.100.23\",\n    \"geolocation\": {\n      \"latitude\": -23.56,\n      \"longitude\": -46.65\n    }\n  }\n}"
+      }
+    },
+    {
+      "_id": "req_s6",
+      "_type": "request",
+      "parentId": "fld_semantic",
+      "name": "IP inválido",
+      "method": "POST",
+      "url": "http://localhost:8001/pix/transaction",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        },
+        {
+          "name": "INTERNAL-TOKEN",
+          "value": "internal-token-dev"
+        }
+      ],
+      "description": "Esperado: 422 RNV001043",
+      "metaSortKey": -997000,
+      "parameters": [],
+      "authentication": {},
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"id\": \"sem-ip-1001\",\n  \"amount\": 5000,\n  \"transaction_date\": \"2026-10-17T14:00:00-03:00\",\n  \"source_account\": {\n    \"branch\": \"0001\",\n    \"account_number\": \"100103\",\n    \"opening_date\": \"2025-03-02T10:00:00-03:00\",\n    \"owner\": {\n      \"document_number\": \"100.023.757-53\"\n    }\n  },\n  \"destination_account\": {\n    \"participant\": \"60701190\",\n    \"branch\": \"3675\",\n    \"account_number\": \"1001903\",\n    \"opening_date\": \"2024-01-10T09:00:00-03:00\",\n    \"owner\": {\n      \"document_number\": \"300.018.021-43\"\n    }\n  },\n  \"source\": {\n    \"device_id\": \"dvc-sem-1001\",\n    \"channel\": \"app\",\n    \"ip\": \"999.1.1.1\",\n    \"geolocation\": {\n      \"latitude\": -23.56,\n      \"longitude\": -46.65\n    }\n  }\n}"
+      }
+    },
+    {
+      "_id": "req_s7",
+      "_type": "request",
+      "parentId": "fld_semantic",
+      "name": "409 passo 1: cria a conta de destino",
+      "method": "POST",
+      "url": "http://localhost:8001/pix/transaction",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        },
+        {
+          "name": "INTERNAL-TOKEN",
+          "value": "internal-token-dev"
+        }
+      ],
+      "description": "Esperado: 201.",
+      "metaSortKey": -996900,
+      "parameters": [],
+      "authentication": {},
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"id\": \"conf-a-1001\",\n  \"amount\": 5000,\n  \"transaction_date\": \"2026-10-17T14:00:00-03:00\",\n  \"source_account\": {\n    \"branch\": \"0001\",\n    \"account_number\": \"100104\",\n    \"opening_date\": \"2025-03-02T10:00:00-03:00\",\n    \"owner\": {\n      \"document_number\": \"100.031.676-90\"\n    }\n  },\n  \"destination_account\": {\n    \"participant\": \"60701190\",\n    \"branch\": \"3675\",\n    \"account_number\": \"1001904\",\n    \"opening_date\": \"2024-01-10T09:00:00-03:00\",\n    \"owner\": {\n      \"document_number\": \"300.024.028-40\"\n    }\n  },\n  \"source\": {\n    \"device_id\": \"dvc-conf-1001\",\n    \"channel\": \"app\",\n    \"ip\": \"198.51.100.23\",\n    \"geolocation\": {\n      \"latitude\": -23.56,\n      \"longitude\": -46.65\n    }\n  }\n}"
+      }
+    },
+    {
+      "_id": "req_s8",
+      "_type": "request",
+      "parentId": "fld_semantic",
+      "name": "409 passo 2: mesma conta, outro titular",
+      "method": "POST",
+      "url": "http://localhost:8001/pix/transaction",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        },
+        {
+          "name": "INTERNAL-TOKEN",
+          "value": "internal-token-dev"
+        }
+      ],
+      "description": "Esperado: 409 RNV001044",
+      "metaSortKey": -996800,
+      "parameters": [],
+      "authentication": {},
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"id\": \"conf-b-1001\",\n  \"amount\": 5000,\n  \"transaction_date\": \"2026-10-17T14:00:00-03:00\",\n  \"source_account\": {\n    \"branch\": \"0001\",\n    \"account_number\": \"100105\",\n    \"opening_date\": \"2025-03-02T10:00:00-03:00\",\n    \"owner\": {\n      \"document_number\": \"100.039.595-20\"\n    }\n  },\n  \"destination_account\": {\n    \"participant\": \"60701190\",\n    \"branch\": \"3675\",\n    \"account_number\": \"1001904\",\n    \"opening_date\": \"2024-01-10T09:00:00-03:00\",\n    \"owner\": {\n      \"document_number\": \"000.999.999-00\"\n    }\n  },\n  \"source\": {\n    \"device_id\": \"dvc-conf-1001\",\n    \"channel\": \"app\",\n    \"ip\": \"198.51.100.23\",\n    \"geolocation\": {\n      \"latitude\": -23.56,\n      \"longitude\": -46.65\n    }\n  }\n}"
+      }
+    },
+    {
+      "_id": "fld_decision",
+      "_type": "request_group",
+      "parentId": "wrk_antifraud_pix",
+      "name": "5. Decisões do motor",
+      "description": "Cada pasta é um cenário. Rode as requisições em ordem (Runner, 1 iteração). Os resultados dependem das tarefas T03 (matriz), T08/T14/T16 (regras) e T10/T15 (histórico).",
+      "environment": {},
+      "metaSortKey": -996700
+    },
+    {
+      "_id": "fld_dec_approved",
+      "_type": "request_group",
+      "parentId": "wrk_antifraud_pix",
+      "name": "5.1 Approved: pagador novo, dia, valor baixo, destino antigo",
+      "description": "",
+      "environment": {},
+      "metaSortKey": -996600
+    },
+    {
+      "_id": "req_d1",
+      "_type": "request",
+      "parentId": "fld_dec_approved",
+      "name": "POST",
+      "method": "POST",
+      "url": "http://localhost:8001/pix/transaction",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        },
+        {
+          "name": "INTERNAL-TOKEN",
+          "value": "internal-token-dev"
+        }
+      ],
+      "description": "Esperado: 201 approved, decision_basis clean. Device novo com valor ≤ R$ 200 não ativa piso.",
+      "metaSortKey": -996500,
+      "parameters": [],
+      "authentication": {},
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"id\": \"appr-1001\",\n  \"amount\": 5000,\n  \"transaction_date\": \"2026-10-17T14:00:00-03:00\",\n  \"source_account\": {\n    \"branch\": \"0001\",\n    \"account_number\": \"100110\",\n    \"opening_date\": \"2025-03-02T10:00:00-03:00\",\n    \"owner\": {\n      \"document_number\": \"100.079.190-42\"\n    }\n  },\n  \"destination_account\": {\n    \"participant\": \"60701190\",\n    \"branch\": \"3675\",\n    \"account_number\": \"1001910\",\n    \"opening_date\": \"2024-01-10T09:00:00-03:00\",\n    \"owner\": {\n      \"document_number\": \"300.060.070-15\"\n    }\n  },\n  \"source\": {\n    \"device_id\": \"dvc-appr-1001\",\n    \"channel\": \"app\",\n    \"ip\": \"198.51.100.23\",\n    \"geolocation\": {\n      \"latitude\": -23.56,\n      \"longitude\": -46.65\n    }\n  }\n}"
+      }
+    },
+    {
+      "_id": "fld_dec_floor",
+      "_type": "request_group",
+      "parentId": "wrk_antifraud_pix",
+      "name": "5.2 Piso de device novo: R$ 250 sem histórico → 2FA",
+      "description": "",
+      "environment": {},
+      "metaSortKey": -996400
+    },
+    {
+      "_id": "req_d2",
+      "_type": "request",
+      "parentId": "fld_dec_floor",
+      "name": "POST",
+      "method": "POST",
+      "url": "http://localhost:8001/pix/transaction",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        },
+        {
+          "name": "INTERNAL-TOKEN",
+          "value": "internal-token-dev"
+        }
+      ],
+      "description": "Esperado: 201 two_factor_required, decision_basis regulatory_floor, floors [FLOOR_UNREGISTERED_DEVICE].",
+      "metaSortKey": -996300,
+      "parameters": [],
+      "authentication": {},
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"id\": \"floor-1001\",\n  \"amount\": 25000,\n  \"transaction_date\": \"2026-10-17T14:00:00-03:00\",\n  \"source_account\": {\n    \"branch\": \"0001\",\n    \"account_number\": \"100111\",\n    \"opening_date\": \"2025-03-02T10:00:00-03:00\",\n    \"owner\": {\n      \"document_number\": \"100.087.109-61\"\n    }\n  },\n  \"destination_account\": {\n    \"participant\": \"60701190\",\n    \"branch\": \"3675\",\n    \"account_number\": \"1001911\",\n    \"opening_date\": \"2024-01-10T09:00:00-03:00\",\n    \"owner\": {\n      \"document_number\": \"300.066.077-13\"\n    }\n  },\n  \"source\": {\n    \"device_id\": \"dvc-floor-1001\",\n    \"channel\": \"app\",\n    \"ip\": \"198.51.100.23\",\n    \"geolocation\": {\n      \"latitude\": -23.56,\n      \"longitude\": -46.65\n    }\n  }\n}"
+      }
+    },
+    {
+      "_id": "fld_dec_2fa",
+      "_type": "request_group",
+      "parentId": "wrk_antifraud_pix",
+      "name": "5.3 Um eixo suspeito: destino novo → 2FA",
+      "description": "",
+      "environment": {},
+      "metaSortKey": -996200
+    },
+    {
+      "_id": "req_d3",
+      "_type": "request",
+      "parentId": "fld_dec_2fa",
+      "name": "POST",
+      "method": "POST",
+      "url": "http://localhost:8001/pix/transaction",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        },
+        {
+          "name": "INTERNAL-TOKEN",
+          "value": "internal-token-dev"
+        }
+      ],
+      "description": "Esperado: 201 two_factor_required, single_suspicious_axis (WHERE_DESTINATION_NEW_ACCOUNT). Depende de T08.",
+      "metaSortKey": -996100,
+      "parameters": [],
+      "authentication": {},
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"id\": \"2fa-1001\",\n  \"amount\": 5000,\n  \"transaction_date\": \"2026-10-17T14:00:00-03:00\",\n  \"source_account\": {\n    \"branch\": \"0001\",\n    \"account_number\": \"100112\",\n    \"opening_date\": \"2025-03-02T10:00:00-03:00\",\n    \"owner\": {\n      \"document_number\": \"100.095.028-07\"\n    }\n  },\n  \"destination_account\": {\n    \"participant\": \"60701190\",\n    \"branch\": \"3675\",\n    \"account_number\": \"1001912\",\n    \"opening_date\": \"2026-10-10T09:00:00-03:00\",\n    \"owner\": {\n      \"document_number\": \"300.072.084-72\"\n    }\n  },\n  \"source\": {\n    \"device_id\": \"dvc-2fa-1001\",\n    \"channel\": \"app\",\n    \"ip\": \"198.51.100.23\",\n    \"geolocation\": {\n      \"latitude\": -23.56,\n      \"longitude\": -46.65\n    }\n  }\n}"
+      }
+    },
+    {
+      "_id": "fld_dec_unlisted",
+      "_type": "request_group",
+      "parentId": "wrk_antifraud_pix",
+      "name": "5.4 ISPB fora da lista do STR",
+      "description": "",
+      "environment": {},
+      "metaSortKey": -996000
+    },
+    {
+      "_id": "req_d4",
+      "_type": "request",
+      "parentId": "fld_dec_unlisted",
+      "name": "POST",
+      "method": "POST",
+      "url": "http://localhost:8001/pix/transaction",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        },
+        {
+          "name": "INTERNAL-TOKEN",
+          "value": "internal-token-dev"
+        }
+      ],
+      "description": "Esperado: 201 (não é erro), where suspicious por WHERE_UNKNOWN_PARTICIPANT → two_factor_required. Depende de T08.",
+      "metaSortKey": -995900,
+      "parameters": [],
+      "authentication": {},
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"id\": \"unl-1001\",\n  \"amount\": 5000,\n  \"transaction_date\": \"2026-10-17T14:00:00-03:00\",\n  \"source_account\": {\n    \"branch\": \"0001\",\n    \"account_number\": \"100113\",\n    \"opening_date\": \"2025-03-02T10:00:00-03:00\",\n    \"owner\": {\n      \"document_number\": \"100.102.947-08\"\n    }\n  },\n  \"destination_account\": {\n    \"participant\": \"12345678\",\n    \"branch\": \"3675\",\n    \"account_number\": \"1001913\",\n    \"opening_date\": \"2024-01-10T09:00:00-03:00\",\n    \"owner\": {\n      \"document_number\": \"300.078.091-23\"\n    }\n  },\n  \"source\": {\n    \"device_id\": \"dvc-unl-1001\",\n    \"channel\": \"app\",\n    \"ip\": \"198.51.100.23\",\n    \"geolocation\": {\n      \"latitude\": -23.56,\n      \"longitude\": -46.65\n    }\n  }\n}"
+      }
+    },
+    {
+      "_id": "fld_dec_night",
+      "_type": "request_group",
+      "parentId": "wrk_antifraud_pix",
+      "name": "5.5 Noturno PF→PF acima de R$ 1.000 e destino novo → rejected",
+      "description": "",
+      "environment": {},
+      "metaSortKey": -995800
+    },
+    {
+      "_id": "req_d5",
+      "_type": "request",
+      "parentId": "fld_dec_night",
+      "name": "POST",
+      "method": "POST",
+      "url": "http://localhost:8001/pix/transaction",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        },
+        {
+          "name": "INTERNAL-TOKEN",
+          "value": "internal-token-dev"
+        }
+      ],
+      "description": "Esperado: 201 rejected, two_suspicious_axes.",
+      "metaSortKey": -995700,
+      "parameters": [],
+      "authentication": {},
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"id\": \"night-1001\",\n  \"amount\": 150000,\n  \"transaction_date\": \"2026-10-17T22:15:00-03:00\",\n  \"source_account\": {\n    \"branch\": \"0001\",\n    \"account_number\": \"100114\",\n    \"opening_date\": \"2025-03-02T10:00:00-03:00\",\n    \"owner\": {\n      \"document_number\": \"100.110.866-37\"\n    }\n  },\n  \"destination_account\": {\n    \"participant\": \"60701190\",\n    \"branch\": \"3675\",\n    \"account_number\": \"1001914\",\n    \"opening_date\": \"2026-10-10T09:00:00-03:00\",\n    \"owner\": {\n      \"document_number\": \"300.084.098-20\"\n    }\n  },\n  \"source\": {\n    \"device_id\": \"dvc-night-1001\",\n    \"channel\": \"app\",\n    \"ip\": \"198.51.100.23\",\n    \"geolocation\": {\n      \"latitude\": -23.56,\n      \"longitude\": -46.65\n    }\n  }\n}"
+      }
+    },
+    {
+      "_id": "fld_dec_night_pj",
+      "_type": "request_group",
+      "parentId": "wrk_antifraud_pix",
+      "name": "5.6 Mesmo valor noturno PF→PJ: piso noturno não se aplica",
+      "description": "",
+      "environment": {},
+      "metaSortKey": -995600
+    },
+    {
+      "_id": "req_d6",
+      "_type": "request",
+      "parentId": "fld_dec_night_pj",
+      "name": "POST",
+      "method": "POST",
+      "url": "http://localhost:8001/pix/transaction",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        },
+        {
+          "name": "INTERNAL-TOKEN",
+          "value": "internal-token-dev"
+        }
+      ],
+      "description": "Esperado: sem FLOOR_NIGHT_LIMIT (comércio noturno é normal). Com device novo e valor > R$ 200, o piso de device ainda leva a 2FA.",
+      "metaSortKey": -995500,
+      "parameters": [],
+      "authentication": {},
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"id\": \"nightpj-1001\",\n  \"amount\": 150000,\n  \"transaction_date\": \"2026-10-17T22:15:00-03:00\",\n  \"source_account\": {\n    \"branch\": \"0001\",\n    \"account_number\": \"100115\",\n    \"opening_date\": \"2025-03-02T10:00:00-03:00\",\n    \"owner\": {\n      \"document_number\": \"100.118.785-76\"\n    }\n  },\n  \"destination_account\": {\n    \"participant\": \"60701190\",\n    \"branch\": \"3675\",\n    \"account_number\": \"1001915\",\n    \"opening_date\": \"2024-01-10T09:00:00-03:00\",\n    \"owner\": {\n      \"document_number\": \"20.000.465/0001-50\"\n    }\n  },\n  \"source\": {\n    \"device_id\": \"dvc-nightpj-1001\",\n    \"channel\": \"app\",\n    \"ip\": \"198.51.100.23\",\n    \"geolocation\": {\n      \"latitude\": -23.56,\n      \"longitude\": -46.65\n    }\n  }\n}"
+      }
+    },
+    {
+      "_id": "fld_dec_velocity",
+      "_type": "request_group",
+      "parentId": "wrk_antifraud_pix",
+      "name": "5.7 Velocity: 6 Pix do mesmo pagador em 10 min",
+      "description": "Mesmo pagador, mesmo device, mesmo destino antigo, de 2 em 2 minutos. Esperado: 3º em diante suspicious (2FA), 6º critical (rejected). Depende de T15 e T16.",
+      "environment": {},
+      "metaSortKey": -995400
+    },
+    {
+      "_id": "req_v1",
+      "_type": "request",
+      "parentId": "fld_dec_velocity",
+      "name": "Pix #1",
+      "method": "POST",
+      "url": "http://localhost:8001/pix/transaction",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        },
+        {
+          "name": "INTERNAL-TOKEN",
+          "value": "internal-token-dev"
+        }
+      ],
+      "description": "Pix 1 de 6 (14:10).",
+      "metaSortKey": -995300,
+      "parameters": [],
+      "authentication": {},
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"id\": \"vel1-1001\",\n  \"amount\": 3000,\n  \"transaction_date\": \"2026-10-17T14:10:00-03:00\",\n  \"source_account\": {\n    \"branch\": \"0001\",\n    \"account_number\": \"100116\",\n    \"opening_date\": \"2025-03-02T10:00:00-03:00\",\n    \"owner\": {\n      \"document_number\": \"100.126.704-48\"\n    }\n  },\n  \"destination_account\": {\n    \"participant\": \"60701190\",\n    \"branch\": \"3675\",\n    \"account_number\": \"1001916\",\n    \"opening_date\": \"2024-01-10T09:00:00-03:00\",\n    \"owner\": {\n      \"document_number\": \"300.096.112-74\"\n    }\n  },\n  \"source\": {\n    \"device_id\": \"dvc-vel-1001\",\n    \"channel\": \"app\",\n    \"ip\": \"198.51.100.23\",\n    \"geolocation\": {\n      \"latitude\": -23.56,\n      \"longitude\": -46.65\n    }\n  }\n}"
+      }
+    },
+    {
+      "_id": "req_v2",
+      "_type": "request",
+      "parentId": "fld_dec_velocity",
+      "name": "Pix #2",
+      "method": "POST",
+      "url": "http://localhost:8001/pix/transaction",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        },
+        {
+          "name": "INTERNAL-TOKEN",
+          "value": "internal-token-dev"
+        }
+      ],
+      "description": "Pix 2 de 6 (14:12).",
+      "metaSortKey": -995200,
+      "parameters": [],
+      "authentication": {},
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"id\": \"vel2-1001\",\n  \"amount\": 3000,\n  \"transaction_date\": \"2026-10-17T14:12:00-03:00\",\n  \"source_account\": {\n    \"branch\": \"0001\",\n    \"account_number\": \"100116\",\n    \"opening_date\": \"2025-03-02T10:00:00-03:00\",\n    \"owner\": {\n      \"document_number\": \"100.126.704-48\"\n    }\n  },\n  \"destination_account\": {\n    \"participant\": \"60701190\",\n    \"branch\": \"3675\",\n    \"account_number\": \"1001916\",\n    \"opening_date\": \"2024-01-10T09:00:00-03:00\",\n    \"owner\": {\n      \"document_number\": \"300.096.112-74\"\n    }\n  },\n  \"source\": {\n    \"device_id\": \"dvc-vel-1001\",\n    \"channel\": \"app\",\n    \"ip\": \"198.51.100.23\",\n    \"geolocation\": {\n      \"latitude\": -23.56,\n      \"longitude\": -46.65\n    }\n  }\n}"
+      }
+    },
+    {
+      "_id": "req_v3",
+      "_type": "request",
+      "parentId": "fld_dec_velocity",
+      "name": "Pix #3",
+      "method": "POST",
+      "url": "http://localhost:8001/pix/transaction",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        },
+        {
+          "name": "INTERNAL-TOKEN",
+          "value": "internal-token-dev"
+        }
+      ],
+      "description": "Pix 3 de 6 (14:14).",
+      "metaSortKey": -995100,
+      "parameters": [],
+      "authentication": {},
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"id\": \"vel3-1001\",\n  \"amount\": 3000,\n  \"transaction_date\": \"2026-10-17T14:14:00-03:00\",\n  \"source_account\": {\n    \"branch\": \"0001\",\n    \"account_number\": \"100116\",\n    \"opening_date\": \"2025-03-02T10:00:00-03:00\",\n    \"owner\": {\n      \"document_number\": \"100.126.704-48\"\n    }\n  },\n  \"destination_account\": {\n    \"participant\": \"60701190\",\n    \"branch\": \"3675\",\n    \"account_number\": \"1001916\",\n    \"opening_date\": \"2024-01-10T09:00:00-03:00\",\n    \"owner\": {\n      \"document_number\": \"300.096.112-74\"\n    }\n  },\n  \"source\": {\n    \"device_id\": \"dvc-vel-1001\",\n    \"channel\": \"app\",\n    \"ip\": \"198.51.100.23\",\n    \"geolocation\": {\n      \"latitude\": -23.56,\n      \"longitude\": -46.65\n    }\n  }\n}"
+      }
+    },
+    {
+      "_id": "req_v4",
+      "_type": "request",
+      "parentId": "fld_dec_velocity",
+      "name": "Pix #4",
+      "method": "POST",
+      "url": "http://localhost:8001/pix/transaction",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        },
+        {
+          "name": "INTERNAL-TOKEN",
+          "value": "internal-token-dev"
+        }
+      ],
+      "description": "Pix 4 de 6 (14:16).",
+      "metaSortKey": -995000,
+      "parameters": [],
+      "authentication": {},
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"id\": \"vel4-1001\",\n  \"amount\": 3000,\n  \"transaction_date\": \"2026-10-17T14:16:00-03:00\",\n  \"source_account\": {\n    \"branch\": \"0001\",\n    \"account_number\": \"100116\",\n    \"opening_date\": \"2025-03-02T10:00:00-03:00\",\n    \"owner\": {\n      \"document_number\": \"100.126.704-48\"\n    }\n  },\n  \"destination_account\": {\n    \"participant\": \"60701190\",\n    \"branch\": \"3675\",\n    \"account_number\": \"1001916\",\n    \"opening_date\": \"2024-01-10T09:00:00-03:00\",\n    \"owner\": {\n      \"document_number\": \"300.096.112-74\"\n    }\n  },\n  \"source\": {\n    \"device_id\": \"dvc-vel-1001\",\n    \"channel\": \"app\",\n    \"ip\": \"198.51.100.23\",\n    \"geolocation\": {\n      \"latitude\": -23.56,\n      \"longitude\": -46.65\n    }\n  }\n}"
+      }
+    },
+    {
+      "_id": "req_v5",
+      "_type": "request",
+      "parentId": "fld_dec_velocity",
+      "name": "Pix #5",
+      "method": "POST",
+      "url": "http://localhost:8001/pix/transaction",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        },
+        {
+          "name": "INTERNAL-TOKEN",
+          "value": "internal-token-dev"
+        }
+      ],
+      "description": "Pix 5 de 6 (14:18).",
+      "metaSortKey": -994900,
+      "parameters": [],
+      "authentication": {},
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"id\": \"vel5-1001\",\n  \"amount\": 3000,\n  \"transaction_date\": \"2026-10-17T14:18:00-03:00\",\n  \"source_account\": {\n    \"branch\": \"0001\",\n    \"account_number\": \"100116\",\n    \"opening_date\": \"2025-03-02T10:00:00-03:00\",\n    \"owner\": {\n      \"document_number\": \"100.126.704-48\"\n    }\n  },\n  \"destination_account\": {\n    \"participant\": \"60701190\",\n    \"branch\": \"3675\",\n    \"account_number\": \"1001916\",\n    \"opening_date\": \"2024-01-10T09:00:00-03:00\",\n    \"owner\": {\n      \"document_number\": \"300.096.112-74\"\n    }\n  },\n  \"source\": {\n    \"device_id\": \"dvc-vel-1001\",\n    \"channel\": \"app\",\n    \"ip\": \"198.51.100.23\",\n    \"geolocation\": {\n      \"latitude\": -23.56,\n      \"longitude\": -46.65\n    }\n  }\n}"
+      }
+    },
+    {
+      "_id": "req_v6",
+      "_type": "request",
+      "parentId": "fld_dec_velocity",
+      "name": "Pix #6",
+      "method": "POST",
+      "url": "http://localhost:8001/pix/transaction",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        },
+        {
+          "name": "INTERNAL-TOKEN",
+          "value": "internal-token-dev"
+        }
+      ],
+      "description": "Pix 6 de 6 (14:20).",
+      "metaSortKey": -994800,
+      "parameters": [],
+      "authentication": {},
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"id\": \"vel6-1001\",\n  \"amount\": 3000,\n  \"transaction_date\": \"2026-10-17T14:20:00-03:00\",\n  \"source_account\": {\n    \"branch\": \"0001\",\n    \"account_number\": \"100116\",\n    \"opening_date\": \"2025-03-02T10:00:00-03:00\",\n    \"owner\": {\n      \"document_number\": \"100.126.704-48\"\n    }\n  },\n  \"destination_account\": {\n    \"participant\": \"60701190\",\n    \"branch\": \"3675\",\n    \"account_number\": \"1001916\",\n    \"opening_date\": \"2024-01-10T09:00:00-03:00\",\n    \"owner\": {\n      \"document_number\": \"300.096.112-74\"\n    }\n  },\n  \"source\": {\n    \"device_id\": \"dvc-vel-1001\",\n    \"channel\": \"app\",\n    \"ip\": \"198.51.100.23\",\n    \"geolocation\": {\n      \"latitude\": -23.56,\n      \"longitude\": -46.65\n    }\n  }\n}"
+      }
+    },
+    {
+      "_id": "fld_dec_fanin",
+      "_type": "request_group",
+      "parentId": "wrk_antifraud_pix",
+      "name": "5.8 Fan-in: 3 pagadores distintos para o mesmo destino novo",
+      "description": "Esperado: pagador novo é rejeitado por evidência do DESTINO (WHERE_DESTINATION_FAN_IN, critical). Depende de T14 e T15.",
+      "environment": {},
+      "metaSortKey": -994700
+    },
+    {
+      "_id": "req_fi1",
+      "_type": "request",
+      "parentId": "fld_dec_fanin",
+      "name": "Pagador 1",
+      "method": "POST",
+      "url": "http://localhost:8001/pix/transaction",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        },
+        {
+          "name": "INTERNAL-TOKEN",
+          "value": "internal-token-dev"
+        }
+      ],
+      "description": "Pagador 1 de 3. Até o 2º: 2FA (destino novo). A partir do 3º: rejected.",
+      "metaSortKey": -994600,
+      "parameters": [],
+      "authentication": {},
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"id\": \"fanin1-1001\",\n  \"amount\": 4000,\n  \"transaction_date\": \"2026-10-17T15:00:00-03:00\",\n  \"source_account\": {\n    \"branch\": \"0001\",\n    \"account_number\": \"100120\",\n    \"opening_date\": \"2025-03-02T10:00:00-03:00\",\n    \"owner\": {\n      \"document_number\": \"100.158.380-99\"\n    }\n  },\n  \"destination_account\": {\n    \"participant\": \"60701190\",\n    \"branch\": \"3675\",\n    \"account_number\": \"1001917\",\n    \"opening_date\": \"2026-10-10T09:00:00-03:00\",\n    \"owner\": {\n      \"document_number\": \"300.102.119-50\"\n    }\n  },\n  \"source\": {\n    \"device_id\": \"dvc-fanin1-1001\",\n    \"channel\": \"app\",\n    \"ip\": \"198.51.100.23\",\n    \"geolocation\": {\n      \"latitude\": -23.56,\n      \"longitude\": -46.65\n    }\n  }\n}"
+      }
+    },
+    {
+      "_id": "req_fi2",
+      "_type": "request",
+      "parentId": "fld_dec_fanin",
+      "name": "Pagador 2",
+      "method": "POST",
+      "url": "http://localhost:8001/pix/transaction",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        },
+        {
+          "name": "INTERNAL-TOKEN",
+          "value": "internal-token-dev"
+        }
+      ],
+      "description": "Pagador 2 de 3. Até o 2º: 2FA (destino novo). A partir do 3º: rejected.",
+      "metaSortKey": -994500,
+      "parameters": [],
+      "authentication": {},
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"id\": \"fanin2-1001\",\n  \"amount\": 4000,\n  \"transaction_date\": \"2026-10-17T15:10:00-03:00\",\n  \"source_account\": {\n    \"branch\": \"0001\",\n    \"account_number\": \"100121\",\n    \"opening_date\": \"2025-03-02T10:00:00-03:00\",\n    \"owner\": {\n      \"document_number\": \"100.166.299-73\"\n    }\n  },\n  \"destination_account\": {\n    \"participant\": \"60701190\",\n    \"branch\": \"3675\",\n    \"account_number\": \"1001917\",\n    \"opening_date\": \"2026-10-10T09:00:00-03:00\",\n    \"owner\": {\n      \"document_number\": \"300.102.119-50\"\n    }\n  },\n  \"source\": {\n    \"device_id\": \"dvc-fanin2-1001\",\n    \"channel\": \"app\",\n    \"ip\": \"198.51.100.23\",\n    \"geolocation\": {\n      \"latitude\": -23.56,\n      \"longitude\": -46.65\n    }\n  }\n}"
+      }
+    },
+    {
+      "_id": "req_fi3",
+      "_type": "request",
+      "parentId": "fld_dec_fanin",
+      "name": "Pagador 3",
+      "method": "POST",
+      "url": "http://localhost:8001/pix/transaction",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        },
+        {
+          "name": "INTERNAL-TOKEN",
+          "value": "internal-token-dev"
+        }
+      ],
+      "description": "Pagador 3 de 3. Até o 2º: 2FA (destino novo). A partir do 3º: rejected.",
+      "metaSortKey": -994400,
+      "parameters": [],
+      "authentication": {},
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"id\": \"fanin3-1001\",\n  \"amount\": 4000,\n  \"transaction_date\": \"2026-10-17T15:20:00-03:00\",\n  \"source_account\": {\n    \"branch\": \"0001\",\n    \"account_number\": \"100122\",\n    \"opening_date\": \"2025-03-02T10:00:00-03:00\",\n    \"owner\": {\n      \"document_number\": \"100.174.218-45\"\n    }\n  },\n  \"destination_account\": {\n    \"participant\": \"60701190\",\n    \"branch\": \"3675\",\n    \"account_number\": \"1001917\",\n    \"opening_date\": \"2026-10-10T09:00:00-03:00\",\n    \"owner\": {\n      \"document_number\": \"300.102.119-50\"\n    }\n  },\n  \"source\": {\n    \"device_id\": \"dvc-fanin3-1001\",\n    \"channel\": \"app\",\n    \"ip\": \"198.51.100.23\",\n    \"geolocation\": {\n      \"latitude\": -23.56,\n      \"longitude\": -46.65\n    }\n  }\n}"
+      }
+    },
+    {
+      "_id": "fld_dec_device",
+      "_type": "request_group",
+      "parentId": "wrk_antifraud_pix",
+      "name": "5.9 Device compartilhado por 3 titulares",
+      "description": "Esperado: a partir do 3º titular, who critical (WHO_DEVICE_COMPROMISED) → rejected. Depende de T15 e T16.",
+      "environment": {},
+      "metaSortKey": -994300
+    },
+    {
+      "_id": "req_dv1",
+      "_type": "request",
+      "parentId": "fld_dec_device",
+      "name": "Titular 1",
+      "method": "POST",
+      "url": "http://localhost:8001/pix/transaction",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        },
+        {
+          "name": "INTERNAL-TOKEN",
+          "value": "internal-token-dev"
+        }
+      ],
+      "description": "Titular 1 de 3 no mesmo device.",
+      "metaSortKey": -994200,
+      "parameters": [],
+      "authentication": {},
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"id\": \"dev1-1001\",\n  \"amount\": 4000,\n  \"transaction_date\": \"2026-10-17T16:00:00-03:00\",\n  \"source_account\": {\n    \"branch\": \"0001\",\n    \"account_number\": \"100130\",\n    \"opening_date\": \"2025-03-02T10:00:00-03:00\",\n    \"owner\": {\n      \"document_number\": \"100.237.570-35\"\n    }\n  },\n  \"destination_account\": {\n    \"participant\": \"60701190\",\n    \"branch\": \"3675\",\n    \"account_number\": \"1001930\",\n    \"opening_date\": \"2024-01-10T09:00:00-03:00\",\n    \"owner\": {\n      \"document_number\": \"300.180.210-34\"\n    }\n  },\n  \"source\": {\n    \"device_id\": \"dvc-shared-1001\",\n    \"channel\": \"app\",\n    \"ip\": \"198.51.100.23\",\n    \"geolocation\": {\n      \"latitude\": -23.56,\n      \"longitude\": -46.65\n    }\n  }\n}"
+      }
+    },
+    {
+      "_id": "req_dv2",
+      "_type": "request",
+      "parentId": "fld_dec_device",
+      "name": "Titular 2",
+      "method": "POST",
+      "url": "http://localhost:8001/pix/transaction",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        },
+        {
+          "name": "INTERNAL-TOKEN",
+          "value": "internal-token-dev"
+        }
+      ],
+      "description": "Titular 2 de 3 no mesmo device.",
+      "metaSortKey": -994100,
+      "parameters": [],
+      "authentication": {},
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"id\": \"dev2-1001\",\n  \"amount\": 4000,\n  \"transaction_date\": \"2026-10-17T16:10:00-03:00\",\n  \"source_account\": {\n    \"branch\": \"0001\",\n    \"account_number\": \"100131\",\n    \"opening_date\": \"2025-03-02T10:00:00-03:00\",\n    \"owner\": {\n      \"document_number\": \"100.245.489-10\"\n    }\n  },\n  \"destination_account\": {\n    \"participant\": \"60701190\",\n    \"branch\": \"3675\",\n    \"account_number\": \"1001931\",\n    \"opening_date\": \"2024-01-10T09:00:00-03:00\",\n    \"owner\": {\n      \"document_number\": \"300.186.217-32\"\n    }\n  },\n  \"source\": {\n    \"device_id\": \"dvc-shared-1001\",\n    \"channel\": \"app\",\n    \"ip\": \"198.51.100.23\",\n    \"geolocation\": {\n      \"latitude\": -23.56,\n      \"longitude\": -46.65\n    }\n  }\n}"
+      }
+    },
+    {
+      "_id": "req_dv3",
+      "_type": "request",
+      "parentId": "fld_dec_device",
+      "name": "Titular 3",
+      "method": "POST",
+      "url": "http://localhost:8001/pix/transaction",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        },
+        {
+          "name": "INTERNAL-TOKEN",
+          "value": "internal-token-dev"
+        }
+      ],
+      "description": "Titular 3 de 3 no mesmo device.",
+      "metaSortKey": -994000,
+      "parameters": [],
+      "authentication": {},
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"id\": \"dev3-1001\",\n  \"amount\": 4000,\n  \"transaction_date\": \"2026-10-17T16:20:00-03:00\",\n  \"source_account\": {\n    \"branch\": \"0001\",\n    \"account_number\": \"100132\",\n    \"opening_date\": \"2025-03-02T10:00:00-03:00\",\n    \"owner\": {\n      \"document_number\": \"100.253.408-91\"\n    }\n  },\n  \"destination_account\": {\n    \"participant\": \"60701190\",\n    \"branch\": \"3675\",\n    \"account_number\": \"1001932\",\n    \"opening_date\": \"2024-01-10T09:00:00-03:00\",\n    \"owner\": {\n      \"document_number\": \"300.192.224-91\"\n    }\n  },\n  \"source\": {\n    \"device_id\": \"dvc-shared-1001\",\n    \"channel\": \"app\",\n    \"ip\": \"198.51.100.23\",\n    \"geolocation\": {\n      \"latitude\": -23.56,\n      \"longitude\": -46.65\n    }\n  }\n}"
+      }
+    },
+    {
+      "_id": "fld_load",
+      "_type": "request_group",
+      "parentId": "wrk_antifraud_pix",
+      "name": "6. Carga e latência (usar o Runner)",
+      "description": "No Runner: escolha a pasta, defina Iterations e Delay. A latência aparece em cada resposta (barra de tempo) e na tabela do Runner. Alvo: < 100 ms por Pix. Não usa arquivo de dados: cada iteração gera um id (uuid) e um número de conta (milissegundos) novos.",
+      "environment": {},
+      "metaSortKey": -993900
+    },
+    {
+      "_id": "req_load_unique",
+      "_type": "request",
+      "parentId": "fld_load",
+      "name": "A. Pagadores novos, destino antigo (caminho feliz)",
+      "method": "POST",
+      "url": "http://localhost:8001/pix/transaction",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        },
+        {
+          "name": "INTERNAL-TOKEN",
+          "value": "internal-token-dev"
+        }
+      ],
+      "description": "Cada iteração é uma conta de origem nova (milissegundos) com id uuid. Esperado: 201 approved. Mede a latência do caminho feliz sem velocity nem fan-in.",
+      "metaSortKey": -993800,
+      "parameters": [],
+      "authentication": {},
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"id\": \"ins-{% uuid 'v4' %}\",\n  \"amount\": 5000,\n  \"transaction_date\": \"2026-10-17T14:00:00-03:00\",\n  \"source_account\": {\n    \"branch\": \"0001\",\n    \"account_number\": \"{% now 'millis', '', 0 %}\",\n    \"opening_date\": \"2025-03-02T10:00:00-03:00\",\n    \"owner\": {\n      \"document_number\": \"111.222.333-96\"\n    }\n  },\n  \"destination_account\": {\n    \"participant\": \"60701190\",\n    \"branch\": \"3675\",\n    \"account_number\": \"71001\",\n    \"opening_date\": \"2024-01-10T09:00:00-03:00\",\n    \"owner\": {\n      \"document_number\": \"444.555.666-19\"\n    }\n  },\n  \"source\": {\n    \"device_id\": \"dvc-{% uuid 'v4' %}\",\n    \"channel\": \"app\",\n    \"ip\": \"198.51.100.23\",\n    \"geolocation\": {\n      \"latitude\": -23.56,\n      \"longitude\": -46.65\n    }\n  }\n}"
+      }
+    },
+    {
+      "_id": "req_load_same",
+      "_type": "request",
+      "parentId": "fld_load",
+      "name": "B. Rajada de um só pagador (20 iterações, delay 0)",
+      "method": "POST",
+      "url": "http://localhost:8001/pix/transaction",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        },
+        {
+          "name": "INTERNAL-TOKEN",
+          "value": "internal-token-dev"
+        }
+      ],
+      "description": "Mesmo pagador e mesmo instante repetidos: a decisão deve escalar para 2FA e depois rejected (velocity). Mede a latência com histórico crescente. Para repetir, regere com outro --run.",
+      "metaSortKey": -993700,
+      "parameters": [],
+      "authentication": {},
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"id\": \"ins-{% uuid 'v4' %}\",\n  \"amount\": 3000,\n  \"transaction_date\": \"2026-10-17T14:00:00-03:00\",\n  \"source_account\": {\n    \"branch\": \"0001\",\n    \"account_number\": \"100140\",\n    \"opening_date\": \"2025-03-02T10:00:00-03:00\",\n    \"owner\": {\n      \"document_number\": \"100.316.760-81\"\n    }\n  },\n  \"destination_account\": {\n    \"participant\": \"60701190\",\n    \"branch\": \"3675\",\n    \"account_number\": \"1001940\",\n    \"opening_date\": \"2024-01-10T09:00:00-03:00\",\n    \"owner\": {\n      \"document_number\": \"300.240.280-02\"\n    }\n  },\n  \"source\": {\n    \"device_id\": \"dvc-burst-1001\",\n    \"channel\": \"app\",\n    \"ip\": \"198.51.100.23\",\n    \"geolocation\": {\n      \"latitude\": -23.56,\n      \"longitude\": -46.65\n    }\n  }\n}"
+      }
+    },
+    {
+      "_id": "req_load_fanin",
+      "_type": "request",
+      "parentId": "fld_load",
+      "name": "C. Campanha: muitos pagadores novos para um destino novo",
+      "method": "POST",
+      "url": "http://localhost:8001/pix/transaction",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        },
+        {
+          "name": "INTERNAL-TOKEN",
+          "value": "internal-token-dev"
+        }
+      ],
+      "description": "Fan-in: a partir do 3º pagador distinto, rejected por WHERE_DESTINATION_FAN_IN. Mede a latência da consulta de destino.",
+      "metaSortKey": -993600,
+      "parameters": [],
+      "authentication": {},
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"id\": \"ins-{% uuid 'v4' %}\",\n  \"amount\": 3000,\n  \"transaction_date\": \"2026-10-17T14:00:00-03:00\",\n  \"source_account\": {\n    \"branch\": \"0001\",\n    \"account_number\": \"{% now 'millis', '', 0 %}\",\n    \"opening_date\": \"2025-03-02T10:00:00-03:00\",\n    \"owner\": {\n      \"document_number\": \"111.222.333-96\"\n    }\n  },\n  \"destination_account\": {\n    \"participant\": \"60701190\",\n    \"branch\": \"3675\",\n    \"account_number\": \"1001941\",\n    \"opening_date\": \"2026-10-10T09:00:00-03:00\",\n    \"owner\": {\n      \"document_number\": \"300.246.287-00\"\n    }\n  },\n  \"source\": {\n    \"device_id\": \"dvc-{% uuid 'v4' %}\",\n    \"channel\": \"app\",\n    \"ip\": \"198.51.100.23\",\n    \"geolocation\": {\n      \"latitude\": -23.56,\n      \"longitude\": -46.65\n    }\n  }\n}"
+      }
+    }
+  ]
+}

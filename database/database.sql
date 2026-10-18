@@ -4,7 +4,7 @@ CREATE TABLE pix_participant(
     name                            VARCHAR(255) NOT NULL,
     listed                          BOOLEAN NOT NULL DEFAULT TRUE,
     created_at                      TIMESTAMPTZ NOT NULL DEFAULT(NOW()),
-    UNIQUE(ispb)
+    CONSTRAINT uq_pix_participant_ispb UNIQUE(ispb)
 );
 
 INSERT INTO pix_participant (ispb, name) VALUES
@@ -539,29 +539,51 @@ INSERT INTO rule_outcome (enumerator) VALUES
 ('not_fired'),
 ('unavailable');
 
-CREATE TABLE account(
+CREATE TABLE decision_basis(
     id                              SERIAL PRIMARY KEY,
+    enumerator                      VARCHAR(30) NOT NULL,
+    created_at                      TIMESTAMPTZ NOT NULL DEFAULT(NOW()),
+    UNIQUE(enumerator)
+);
+
+INSERT INTO decision_basis (enumerator) VALUES
+('critical_axis'),
+('two_suspicious_axes'),
+('single_suspicious_axis'),
+('regulatory_floor'),
+('trust_downgrade'),
+('clean');
+
+CREATE TABLE account_holder(
+    id                              BIGSERIAL PRIMARY KEY,
+    document_number                 VARCHAR(18) NOT NULL,
+    person_type_id                  INTEGER NOT NULL REFERENCES person_type(id),
+    created_at                      TIMESTAMPTZ NOT NULL DEFAULT(NOW()),
+    CONSTRAINT uq_account_holder_document_number UNIQUE(document_number)
+);
+
+CREATE TABLE account(
+    id                              BIGSERIAL PRIMARY KEY,
     participant_id                  INTEGER NOT NULL REFERENCES pix_participant(id),
     branch                          VARCHAR(4) NOT NULL,
     account_number                  VARCHAR(20) NOT NULL,
-    document_number                 VARCHAR(18) NOT NULL,
-    person_type_id                  INTEGER NOT NULL REFERENCES person_type(id),
+    account_holder_id               BIGINT NOT NULL REFERENCES account_holder(id),
     opening_date                    TIMESTAMPTZ NOT NULL,
     created_at                      TIMESTAMPTZ NOT NULL DEFAULT(NOW()),
-    UNIQUE(participant_id, branch, account_number)
+    CONSTRAINT uq_account_participant_branch_number UNIQUE(participant_id, branch, account_number)
 );
 
-CREATE INDEX idx_account_document_number ON account(document_number);
+CREATE INDEX idx_account_holder ON account(account_holder_id);
 
 CREATE TABLE pix_transaction(
-    id                              SERIAL PRIMARY KEY,
+    id                              BIGSERIAL PRIMARY KEY,
     transaction_id                  VARCHAR(64) NOT NULL,
     payload_hash                    CHAR(64) NOT NULL,
     amount_minor                    BIGINT NOT NULL,
     transaction_date                TIMESTAMPTZ NOT NULL,
     utc_offset_minutes              SMALLINT NOT NULL,
-    source_account_id               INTEGER NOT NULL REFERENCES account(id),
-    destination_account_id          INTEGER NOT NULL REFERENCES account(id),
+    source_account_id               BIGINT NOT NULL REFERENCES account(id),
+    destination_account_id          BIGINT NOT NULL REFERENCES account(id),
     device_id                       VARCHAR(128) NOT NULL,
     channel                         VARCHAR(30) NOT NULL,
     ip_address                      INET NOT NULL,
@@ -575,71 +597,79 @@ CREATE TABLE pix_transaction(
     CHECK((latitude IS NULL) = (longitude IS NULL))
 );
 
-CREATE INDEX idx_pix_transaction_source_date ON pix_transaction(source_account_id, transaction_date DESC);
-CREATE INDEX idx_pix_transaction_destination_date ON pix_transaction(destination_account_id, transaction_date DESC);
-CREATE INDEX idx_pix_transaction_device_date ON pix_transaction(device_id, transaction_date DESC);
-CREATE INDEX idx_pix_transaction_ip_date ON pix_transaction(ip_address, transaction_date DESC);
+CREATE INDEX idx_pix_transaction_source_date ON pix_transaction(source_account_id, transaction_date DESC)
+    INCLUDE (amount_minor, destination_account_id, device_id, channel);
+CREATE INDEX idx_pix_transaction_destination_date ON pix_transaction(destination_account_id, transaction_date DESC)
+    INCLUDE (source_account_id);
+CREATE INDEX idx_pix_transaction_device_date ON pix_transaction(device_id, transaction_date DESC)
+    INCLUDE (source_account_id);
+CREATE INDEX idx_pix_transaction_ip_date ON pix_transaction(ip_address, transaction_date DESC)
+    INCLUDE (source_account_id);
 
 CREATE TABLE pix_analysis(
-    id                              SERIAL PRIMARY KEY,
-    analysis_key                    CHAR(36) NOT NULL,
-    pix_transaction_id              INTEGER NOT NULL REFERENCES pix_transaction(id),
+    id                              BIGSERIAL PRIMARY KEY,
+    analysis_key                    UUID NOT NULL DEFAULT gen_random_uuid(),
+    pix_transaction_id              BIGINT NOT NULL REFERENCES pix_transaction(id),
     status_id                       INTEGER NOT NULL REFERENCES analysis_status(id),
+    decision_basis_id               INTEGER NOT NULL REFERENCES decision_basis(id),
     policy_version                  VARCHAR(30) NOT NULL,
     payer_maturity_phase            SMALLINT NOT NULL,
-    who_level_id                    INTEGER NOT NULL REFERENCES risk_level(id),
-    how_level_id                    INTEGER NOT NULL REFERENCES risk_level(id),
-    where_level_id                  INTEGER NOT NULL REFERENCES risk_level(id),
-    decision_basis                  VARCHAR(30) NOT NULL,
     features                        JSONB NOT NULL,
     latency_ms                      INTEGER NOT NULL,
     created_at                      TIMESTAMPTZ NOT NULL DEFAULT(NOW()),
-    UNIQUE(analysis_key),
-    UNIQUE(pix_transaction_id),
+    CONSTRAINT uq_pix_analysis_analysis_key UNIQUE(analysis_key),
+    CONSTRAINT uq_pix_analysis_pix_transaction UNIQUE(pix_transaction_id),
     CHECK(payer_maturity_phase IN (0, 1, 2)),
     CHECK(latency_ms >= 0)
 );
 
-CREATE INDEX idx_pix_analysis_status ON pix_analysis(status_id);
+CREATE TABLE pix_analysis_axis(
+    id                              BIGSERIAL PRIMARY KEY,
+    pix_analysis_id                 BIGINT NOT NULL REFERENCES pix_analysis(id),
+    rule_axis_id                    INTEGER NOT NULL REFERENCES rule_axis(id),
+    risk_level_id                   INTEGER NOT NULL REFERENCES risk_level(id),
+    created_at                      TIMESTAMPTZ NOT NULL DEFAULT(NOW()),
+    CONSTRAINT uq_pix_analysis_axis UNIQUE(pix_analysis_id, rule_axis_id)
+);
 
 CREATE TABLE pix_analysis_rule(
-    id                              SERIAL PRIMARY KEY,
-    pix_analysis_id                 INTEGER NOT NULL REFERENCES pix_analysis(id),
+    id                              BIGSERIAL PRIMARY KEY,
+    pix_analysis_id                 BIGINT NOT NULL REFERENCES pix_analysis(id),
     rule_code                       VARCHAR(60) NOT NULL,
-    axis_id                         INTEGER NOT NULL REFERENCES rule_axis(id),
-    outcome_id                      INTEGER NOT NULL REFERENCES rule_outcome(id),
-    level_id                        INTEGER REFERENCES risk_level(id),
+    rule_axis_id                    INTEGER NOT NULL REFERENCES rule_axis(id),
+    rule_outcome_id                 INTEGER NOT NULL REFERENCES rule_outcome(id),
+    risk_level_id                   INTEGER REFERENCES risk_level(id),
     observed                        JSONB,
     threshold                       JSONB,
     reason                          VARCHAR(255) NOT NULL,
     created_at                      TIMESTAMPTZ NOT NULL DEFAULT(NOW()),
-    UNIQUE(pix_analysis_id, rule_code)
+    CONSTRAINT uq_pix_analysis_rule UNIQUE(pix_analysis_id, rule_code)
 );
 
 CREATE TABLE account_device(
-    id                              SERIAL PRIMARY KEY,
-    account_id                      INTEGER NOT NULL REFERENCES account(id),
+    id                              BIGSERIAL PRIMARY KEY,
+    account_id                      BIGINT NOT NULL REFERENCES account(id),
     device_id                       VARCHAR(128) NOT NULL,
     approved_count                  INTEGER NOT NULL,
     first_approved_at               TIMESTAMPTZ NOT NULL,
     last_approved_at                TIMESTAMPTZ NOT NULL,
     created_at                      TIMESTAMPTZ NOT NULL DEFAULT(NOW()),
-    UNIQUE(account_id, device_id),
+    CONSTRAINT uq_account_device UNIQUE(account_id, device_id),
     CHECK(approved_count > 0)
 );
 
 CREATE INDEX idx_account_device_device ON account_device(device_id);
 
 CREATE TABLE account_counterparty(
-    id                              SERIAL PRIMARY KEY,
-    source_account_id               INTEGER NOT NULL REFERENCES account(id),
-    destination_account_id          INTEGER NOT NULL REFERENCES account(id),
+    id                              BIGSERIAL PRIMARY KEY,
+    source_account_id               BIGINT NOT NULL REFERENCES account(id),
+    destination_account_id          BIGINT NOT NULL REFERENCES account(id),
     approved_count                  INTEGER NOT NULL,
     approved_amount_minor           BIGINT NOT NULL,
     first_approved_at               TIMESTAMPTZ NOT NULL,
     last_approved_at                TIMESTAMPTZ NOT NULL,
     created_at                      TIMESTAMPTZ NOT NULL DEFAULT(NOW()),
-    UNIQUE(source_account_id, destination_account_id),
+    CONSTRAINT uq_account_counterparty UNIQUE(source_account_id, destination_account_id),
     CHECK(source_account_id <> destination_account_id),
     CHECK(approved_count > 0),
     CHECK(approved_amount_minor > 0)
