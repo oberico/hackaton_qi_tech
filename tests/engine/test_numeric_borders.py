@@ -172,3 +172,32 @@ def test_velocity_border(flow, attempts, level):
     assert rule.description and rule.translation
     assert result.how.level == (level or RiskLevel.OK)
     assert (result.decision, result.decision_basis) == DECISION_BY_LEVEL[level]
+
+
+DEVICE_COMPROMISED_THRESHOLD = {"distinct_documents_total": 3, "distinct_documents_24h": 2}
+
+DEVICE_COMPROMISED_BORDERS = {
+    "two_documents_in_total": (2, 0, None),
+    "three_documents_in_total": (3, 0, RiskLevel.CRITICAL),
+    "one_document_in_24h": (1, 1, None),
+    "two_documents_in_24h": (2, 2, RiskLevel.CRITICAL),
+    "two_in_total_and_one_in_24h": (2, 1, None),
+    "three_in_total_and_two_in_24h": (3, 2, RiskLevel.CRITICAL),
+}
+
+
+@pytest.mark.parametrize("total, last_24h, level", DEVICE_COMPROMISED_BORDERS.values(), ids=DEVICE_COMPROMISED_BORDERS.keys())
+def test_device_compromised_border(total, last_24h, level):
+    context = make_context(device={"distinct_documents_total": total, "distinct_documents_24h": last_24h})
+
+    result = evaluate(context)
+
+    rule = rule_of(result, "WHO_DEVICE_COMPROMISED")
+    assert (rule.outcome, rule.level) == (RuleOutcome.FIRED if level else RuleOutcome.NOT_FIRED, level)
+    assert (rule.observed, rule.threshold) == (
+        {"distinct_documents_total": total, "distinct_documents_24h": last_24h}, DEVICE_COMPROMISED_THRESHOLD,
+    )
+    assert rule.axis == "who"
+    assert rule.description and rule.translation
+    assert result.who.level == (level or RiskLevel.OK)
+    assert (result.decision, result.decision_basis) == DECISION_BY_LEVEL[level]
