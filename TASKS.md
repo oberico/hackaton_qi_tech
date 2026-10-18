@@ -27,7 +27,7 @@ Arquivos de contrato (só o Ramon altera): `database/database.sql`, `src/engine/
 | T13 | Teste de integração: payload de exemplo do desafio → `rejected` (`two_suspicious_axes`) | BAIXA | Natalia | Victoria | T03, T05 | 20 | 04:30 | a fazer |
 | T14 | Regras WHERE de histórico: `WHERE_DESTINATION_FAN_IN` (critical, por fluxo), `WHERE_DESTINATION_REJECTIONS` (critical, fundada suspeita) | BAIXA | Natalia | Ramon | T08 | 45 | 05:15 | a fazer |
 | T15 | Consultas de janela que montam o `RiskContext` (velocity, soma noturna, soma de device novo, docs por device, fan-in, rejeições no destino, pagadores por IP) | ALTA | Ramon (Chaz) | Victoria | T06, T10 | 75 | 05:20 | a fazer |
-| T16 | Regras HOW/WHO núcleo: `HOW_VELOCITY_EXCEEDED` (por fluxo, suspicious/critical), `WHO_DEVICE_COMPROMISED` (critical) | MÉDIA | Victoria | Ramon | T03 | 50 | 05:30 | fazendo |
+| T16 | Regras HOW/WHO núcleo: `HOW_VELOCITY_EXCEEDED` (por fluxo, suspicious/critical), `WHO_DEVICE_COMPROMISED` (critical) | MÉDIA | Victoria | Ramon | T03 | 50 | 05:30 | em revisão |
 | T17 | README "Como rodar e testar": do clone ao 1º `curl` (com `INTERNAL-TOKEN`), payload do desafio pronto para colar, `pytest`, farm | BAIXA | Natalia | Victoria | T05, T07 | 30 | 05:45 | a fazer |
 | T18 | README: exemplo de ponta a ponta (payload do desafio → `rejected`, com o porquê) + revisão da tabela de Regras contra o `policy.py` | ALTA | Ramon (Hann) | Victoria | T13, T08 | 30 | 05:30 | a fazer |
 | T22 | **P0**: testes de integração do cold start, incluindo evidência de OUTRA entidade (device, destino): 1ª transação sem histórico nunca `rejected` sem evidência em 2 eixos | BAIXA | Natalia | Victoria | T10 | 35 | 06:20 | a fazer |
