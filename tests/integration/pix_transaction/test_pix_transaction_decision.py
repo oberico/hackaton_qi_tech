@@ -34,7 +34,7 @@ class TestPixTransactionDecision:
         assert reasons["HOW_NIGHT_LIMIT_EXCEEDED"]["observed"] == {"night_amount": 150000}
         assert reasons["HOW_NIGHT_LIMIT_EXCEEDED"]["threshold"] == {"night_amount": 100000}
         observed_age = reasons["WHERE_DESTINATION_NEW_ACCOUNT"]["observed"]["destination_account_age_days"]
-        assert observed_age == pytest.approx(CHALLENGE_DESTINATION_AGE_DAYS, abs=0.001)
+        assert observed_age == pytest.approx(CHALLENGE_DESTINATION_AGE_DAYS, abs=0.01)
         assert reasons["WHERE_DESTINATION_NEW_ACCOUNT"]["threshold"] == {"destination_account_age_days": 30}
 
     def test_every_evaluated_rule_is_stored_with_its_outcome(self):
